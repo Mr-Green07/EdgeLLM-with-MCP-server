@@ -84,6 +84,7 @@ cache:
   # Maximum cache size in MB (0 = unlimited)
   max_size_mb: 500
 
+# need to be changed
 # Cloud provider credentials (for Google Cloud, Azure, AWS)
 providers:
   google:
