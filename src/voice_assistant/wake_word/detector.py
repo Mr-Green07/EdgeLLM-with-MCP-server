@@ -1,32 +1,44 @@
-import pvporcupine
+import logging
+logging.getLogger().setLevel(logging.ERROR)
+
 import pyaudio
+import numpy as np 
+import openwakeword as oww
+from openwakeword.model import Model
 
-# Wake word detector using Porcupine (example)
+print("Checking for pre-trained models...")
+oww.utils.download_models()
 
-class WakeWordDetector:
-    def __init__(self, access_key, keywords=None):
-        self.porcupine = pvporcupine.create(
-            access_key=access_key,
-            keywords=keywords or ["jarvis"]
-        )
-        self.audio_stream = None
+
+print("Loading models...")
+oww_model = Model(wakeword_models=["hey_mycroft"])
+
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 16000
+CHUNK = 1280
+
+audio = pyaudio.PyAudio()
+mic_stream = audio.open(format= FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+print("Listening for 'hey, jarvis'... (press Ctrl + C to stop)")
+
+
+try:
+    while True:
+        audio_chunk = np.frombuffer(mic_stream.read(CHUNK, exception_on_overflow = False), dtype = np.int16)
+        prediction = oww_model.predict(audio_chunk)
+
+        for model_name, score in prediction.items():
+            if score > 0.5:
+                print(f"Wake word detected: {model_name} -confidence: {score:.2f}")
+
+                oww_model.reset()
+
+except KeyboardInterrupt:
+    print("Stopping...")
+
+finally:
+    mic_stream.stop_stream()
+    mic_stream.close()
+    audio.terminate()
     
-    def detect(self):
-        """Stream audio and detect wake word"""
-        pa = pyaudio.PyAudio()
-        self.audio_stream = pa.open(
-            rate=self.porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=self.porcupine.frame_length
-        )
-        
-        try:
-            while True:
-                pcm = self.audio_stream.read(self.porcupine.frame_length)
-                result = self.porcupine.process(pcm)
-                if result >= 0:
-                    return f"Wake word detected: {result}"
-        finally:
-            self.audio_stream.close()
