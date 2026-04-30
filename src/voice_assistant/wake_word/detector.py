@@ -26,10 +26,12 @@ print("Listening for 'hey, jarvis'... (press Ctrl + C to stop)")
 try:
     while True:
         audio_chunk = np.frombuffer(mic_stream.read(CHUNK, exception_on_overflow = False), dtype = np.int16)
+        volume = np.abs(audio_chunk).mean()
+        print(f"mic volume: {volume:.0f}", end = "\r")
         prediction = oww_model.predict(audio_chunk)
 
         for model_name, score in prediction.items():
-            if score > 0.5:
+            if score > 0.1:
                 print(f"Wake word detected: {model_name} -confidence: {score:.2f}")
 
                 oww_model.reset()
@@ -41,4 +43,4 @@ finally:
     mic_stream.stop_stream()
     mic_stream.close()
     audio.terminate()
-    
+
