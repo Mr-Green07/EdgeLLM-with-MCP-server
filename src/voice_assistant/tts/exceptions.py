@@ -18,6 +18,3 @@ class VoiceNotFoundError(TTSException):
     pass
 
 
-class InvalidAudioFormatError(TTSException):
-    """Raised when audio format is not supported"""
-    pass
