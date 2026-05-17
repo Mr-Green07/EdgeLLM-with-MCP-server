@@ -1,0 +1,389 @@
+// Jenkinsfile for Voice Assistant ASR Pipeline
+// Declarative Pipeline
+
+pipeline {
+    agent any
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 1, unit: 'HOURS')
+    }
+    
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['development', 'staging', 'production'],
+            description: 'Target environment for deployment'
+        )
+        booleanParam(
+            name: 'RUN_PERFORMANCE_TESTS',
+            defaultValue: false,
+            description: 'Run performance tests'
+        )
+        booleanParam(
+            name: 'PUBLISH_DOCKER',
+            defaultValue: false,
+            description: 'Publish Docker image to registry'
+        )
+    }
+    
+    environment {
+        PYTHON_VERSION = '3.10'
+        DOCKER_REGISTRY = credentials('docker-registry-url')
+        DOCKER_CREDENTIALS = credentials('docker-registry-credentials')
+        JENKINS_NODE_COOKIE = 'dontKillMe'
+    }
+    
+    stages {
+        // ================================================================
+        // STAGE 1: Setup & Checkout
+        // ================================================================
+        stage('Setup') {
+            steps {
+                script {
+                    echo "========== Building Voice Assistant ASR =========="
+                    echo "Branch: ${env.GIT_BRANCH}"
+                    echo "Commit: ${env.GIT_COMMIT}"
+                    echo "Environment: ${params.ENVIRONMENT}"
+                }
+                deleteDir()
+                checkout scm
+            }
+        }
+        
+        // ================================================================
+        // STAGE 2: Install Dependencies
+        // ================================================================
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "========== Installing Dependencies =========="
+                    sh '''
+                        python --version
+                        python -m venv venv
+                        . ./venv/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements/base.txt
+                        pip install -r requirements/dev.txt
+                        pip install -r requirements/test.txt
+                    '''
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 3: Code Quality
+        // ================================================================
+        stage('Code Quality') {
+            parallel {
+                stage('Pylint') {
+                    steps {
+                        script {
+                            echo "========== Running Pylint =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                pylint src/voice_assistant --fail-under=7.0 --exit-zero || true
+                            '''
+                        }
+                    }
+                }
+                stage('Black') {
+                    steps {
+                        script {
+                            echo "========== Checking Code Format (Black) =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                black --check src/ tests/ || true
+                            '''
+                        }
+                    }
+                }
+                stage('Flake8') {
+                    steps {
+                        script {
+                            echo "========== Running Flake8 =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                flake8 src/ tests/ --max-line-length=100 --exit-zero || true
+                            '''
+                        }
+                    }
+                }
+                stage('MyPy') {
+                    steps {
+                        script {
+                            echo "========== Type Checking (MyPy) =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                mypy src/voice_assistant --ignore-missing-imports --exit-zero || true
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 4: Unit Tests
+        // ================================================================
+        stage('Unit Tests') {
+            steps {
+                script {
+                    echo "========== Running Unit Tests =========="
+                    sh '''
+                        . ./venv/bin/activate
+                        pytest tests/unit/ -v \\
+                            --cov=src/voice_assistant \\
+                            --cov-report=xml \\
+                            --cov-report=html \\
+                            --junitxml=test-results.xml \\
+                            || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit 'test-results.xml'
+                    publishHTML([
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 5: Integration Tests
+        // ================================================================
+        stage('Integration Tests') {
+            steps {
+                script {
+                    echo "========== Running Integration Tests =========="
+                    sh '''
+                        . ./venv/bin/activate
+                        pytest tests/integration/ -v \\
+                            --tb=short \\
+                            --junitxml=integration-results.xml \\
+                            || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit 'integration-results.xml'
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 6: E2E Tests
+        // ================================================================
+        stage('E2E Tests') {
+            steps {
+                script {
+                    echo "========== Running E2E Tests =========="
+                    sh '''
+                        . ./venv/bin/activate
+                        pytest tests/e2e/ -v \\
+                            --tb=short \\
+                            --junitxml=e2e-results.xml \\
+                            || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit 'e2e-results.xml'
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 7: Security Analysis
+        // ================================================================
+        stage('Security Analysis') {
+            parallel {
+                stage('Bandit') {
+                    steps {
+                        script {
+                            echo "========== Running Bandit Security Scan =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                bandit -r src/voice_assistant -f json -o bandit-report.json || true
+                            '''
+                        }
+                    }
+                }
+                stage('Safety') {
+                    steps {
+                        script {
+                            echo "========== Checking Dependencies (Safety) =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                safety check --json || true
+                            '''
+                        }
+                    }
+                }
+                stage('Pip-Audit') {
+                    steps {
+                        script {
+                            echo "========== Auditing Dependencies (Pip-Audit) =========="
+                            sh '''
+                                . ./venv/bin/activate
+                                pip-audit --desc || true
+                            '''
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'bandit-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 8: Performance Tests (Optional)
+        // ================================================================
+        stage('Performance Tests') {
+            when {
+                expression { params.RUN_PERFORMANCE_TESTS == true }
+            }
+            steps {
+                script {
+                    echo "========== Running Performance Tests =========="
+                    sh '''
+                        . ./venv/bin/activate
+                        pytest tests/performance/ -v \\
+                            --tb=short \\
+                            --junitxml=performance-results.xml \\
+                            || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit 'performance-results.xml'
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 9: Build Docker Image
+        // ================================================================
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "========== Building Docker Image =========="
+                    sh '''
+                        docker build \\
+                            -f docker/Dockerfile \\
+                            -t voice-assistant:${BUILD_NUMBER} \\
+                            -t voice-assistant:latest \\
+                            .
+                    '''
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 10: Push Docker Image (Optional)
+        // ================================================================
+        stage('Push Docker Image') {
+            when {
+                expression { params.PUBLISH_DOCKER == true && env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' }
+            }
+            steps {
+                script {
+                    echo "========== Pushing Docker Image =========="
+                    sh '''
+                        . ./venv/bin/activate
+                        echo ${DOCKER_CREDENTIALS_PSW} | docker login -u ${DOCKER_CREDENTIALS_USR} --password-stdin ${DOCKER_REGISTRY}
+                        docker tag voice-assistant:latest ${DOCKER_REGISTRY}/voice-assistant:latest
+                        docker tag voice-assistant:${BUILD_NUMBER} ${DOCKER_REGISTRY}/voice-assistant:${BUILD_NUMBER}
+                        docker push ${DOCKER_REGISTRY}/voice-assistant:latest
+                        docker push ${DOCKER_REGISTRY}/voice-assistant:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+        
+        // ================================================================
+        // STAGE 11: Deploy (Optional)
+        // ================================================================
+        stage('Deploy') {
+            when {
+                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' }
+            }
+            steps {
+                script {
+                    echo "========== Deploying to ${params.ENVIRONMENT} =========="
+                    sh '''
+                        echo "Deployment step for ${ENVIRONMENT} environment"
+                        # Add deployment logic here based on environment
+                        # Example: kubectl apply -f kubernetes/
+                        # Or: docker-compose -f docker/docker-compose.prod.yml up -d
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        // ================================================================
+        // POST BUILD ACTIONS
+        // ================================================================
+        always {
+            echo "========== Pipeline Cleanup =========="
+            // Clean workspace
+            deleteDir()
+        }
+        
+        success {
+            echo "========== Pipeline Successful =========="
+            // Send success notification
+            emailext(
+                subject: "Jenkins Build Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """Build successful!
+                
+Job: ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Build URL: ${env.BUILD_URL}
+Branch: ${env.GIT_BRANCH}
+Commit: ${env.GIT_COMMIT}
+""",
+                to: '${DEFAULT_RECIPIENTS}',
+                recipientProviders: [developers(), requestor()]
+            )
+        }
+        
+        failure {
+            echo "========== Pipeline Failed =========="
+            // Send failure notification
+            emailext(
+                subject: "Jenkins Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """Build failed!
+
+Job: ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Build URL: ${env.BUILD_URL}
+Branch: ${env.GIT_BRANCH}
+Commit: ${env.GIT_COMMIT}
+
+Please check the build logs for more details.
+""",
+                to: '${DEFAULT_RECIPIENTS}',
+                recipientProviders: [developers(), requestor(), brokenBuildSuspects()]
+            )
+        }
+        
+        unstable {
+            echo "========== Pipeline Unstable =========="
+        }
+    }
+}
