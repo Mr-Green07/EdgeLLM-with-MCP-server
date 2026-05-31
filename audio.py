@@ -6,7 +6,7 @@ if __name__ == '__main__':
     # We configure it for your 4GB GPU (cuda + int8)
     # "large-v3-turbo" is the best balance of speed/quality for live
     recorder = AudioToTextRecorder(
-        model="large-v3-turbo",
+        model="medium",
         language="en",
         device="cuda", 
         compute_type="int8",

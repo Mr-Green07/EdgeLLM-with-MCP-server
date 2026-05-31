@@ -1,19 +1,54 @@
-numpy>=1.21.0
-torch>=2.0.0
-torchaudio>=2.0.0
-fastapi>=0.104.0
-uvicorn>=0.24.0
-sqlalchemy>=2.0.0
-alembic>=1.12.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-dotenv>=1.0.0
-pyaudio>=0.2.13
-librosa>=0.10.0
-scipy>=1.11.0
-requests>=2.31.0
-cryptography>=41.0.0
-pyyaml>=6.0
-loguru>=0.7.0
-pyporcupine
-pyaudio
+# PHASE 1: Offline Speech Recognition System
+# Core Dependencies for Speech-to-Text Pipeline
+# Generated: May 30, 2026
+# Document: PHASE 1 DEVELOPMENT - Offline Speech Recognition System
+
+# ==================== CORE DEPENDENCIES ====================
+
+# Speech Recognition & Audio Processing (Primary)
+openai-whisper==20231117          # Speech-to-text model (local/offline)
+torch==2.0.1                      # Deep learning framework
+torchaudio==2.0.1                 # Audio processing library
+librosa==0.10.0                   # Audio feature extraction
+scipy==1.11.0                     # Scientific computing
+
+# Web Framework & API
+fastapi==0.104.1                  # Web framework for API endpoints
+uvicorn==0.24.0                   # ASGI server for FastAPI
+python-multipart==0.0.6           # File upload handling
+pydantic==2.0.0                   # Data validation
+pydantic-settings==2.0.0          # Settings management
+
+# Audio Processing & Recording
+pyaudio==0.2.13                   # Audio I/O
+numpy>=1.21.0                     # Numerical computing
+
+# Environment & Configuration
+python-dotenv==1.0.0              # Environment variable management
+pyyaml>=6.0                       # YAML configuration parsing
+
+# Caching (Optional for Phase 1, Required for Phase 2)
+redis==5.0.0                      # Redis server client
+redis-py==5.0.0                   # Redis Python client
+
+# Database & ORM (Optional for Phase 1)
+sqlalchemy>=2.0.0                 # SQL toolkit and ORM
+alembic>=1.12.0                   # Database migrations
+
+# Utilities
+requests>=2.31.0                  # HTTP library
+cryptography>=41.0.0              # Cryptographic libraries
+loguru>=0.7.0                     # Logging library
+
+# ==================== DEVELOPMENT DEPENDENCIES ====================
+
+# Testing & Quality Assurance
+pytest==7.4.0                     # Unit testing framework
+pytest-asyncio==0.21.0            # Async test support
+black==23.0.0                     # Code formatter
+flake8==6.0.0                     # Code linter
+
+# ==================== OPTIONAL DEPENDENCIES ====================
+
+# Legacy/Optional packages (keeping for backwards compatibility)
+pyporcupine                       # Wake word detection (Phase 2+)
