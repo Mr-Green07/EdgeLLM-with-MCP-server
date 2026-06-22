@@ -1,23 +1,4 @@
-"""
-============================================================
-PHASE 1: Offline Speech Recognition System
-FastAPI Application Entry Point
-============================================================
 
-Main FastAPI application for offline speech-to-text transcription.
-This is the API server that handles audio file uploads and transcription.
-
-Features:
-- Offline speech-to-text transcription using Whisper
-- RESTful API endpoints
-- WebSocket support (Phase 2+)
-- Caching support (Phase 2+)
-- Comprehensive error handling
-
-Author: ASR Development Team
-Version: 1.0
-Date: May 30, 2026
-"""
 
 import os
 import sys
@@ -33,6 +14,7 @@ from fastapi.responses import JSONResponse, FileResponse # type: ignore
 from pydantic import BaseModel, Field # type: ignore
 from dotenv import load_dotenv # type: ignore
 
+# pyrefly: ignore [missing-import]
 from models import WhisperModelManager, get_model_manager, initialize_model_manager
 
 # Load environment variables
@@ -105,13 +87,7 @@ class ModelInfoResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Handle application lifespan (startup and shutdown).
-    
-    This function manages:
-    - Model initialization on startup
-    - Model cleanup on shutdown
-    """
+  
     # Startup
     logger.info("="*60)
     logger.info("PHASE 1: Offline Speech Recognition System - Starting")
