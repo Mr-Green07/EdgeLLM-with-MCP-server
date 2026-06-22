@@ -1,14 +1,9 @@
-# PHASE 1: Offline Speech Recognition System
-# Core Dependencies for Speech-to-Text Pipeline
-# Generated: May 30, 2026
-# Document: PHASE 1 DEVELOPMENT - Offline Speech Recognition System
 
-# ==================== CORE DEPENDENCIES ====================
 
 # Speech Recognition & Audio Processing (Primary)
-openai-whisper==20231117          # Speech-to-text model (local/offline)
-torch==2.0.1                      # Deep learning framework
-torchaudio==2.0.1                 # Audio processing library
+#openai-whisper==20231117          # Speech-to-text model (local/offline)
+#torch==2.0.1                      # Deep learning framework
+#torchaudio==2.0.1                 # Audio processing library
 librosa==0.10.0                   # Audio feature extraction
 scipy==1.11.0                     # Scientific computing
 
