@@ -142,12 +142,7 @@ if os.getenv('ENABLE_CORS', 'true').lower() == 'true':
 
 @app.get("/health", response_model=HealthCheckResponse, tags=["Health"])
 async def health_check():
-    """
-    Health check endpoint.
     
-    Returns:
-        HealthCheckResponse: System health and status information
-    """
     manager = get_model_manager()
     
     return HealthCheckResponse(
@@ -161,12 +156,7 @@ async def health_check():
 
 @app.get(f"{API_PREFIX}/status", tags=["System"])
 async def get_status():
-    """
-    Get system status and configuration.
-    
-    Returns:
-        dict: System configuration and status
-    """
+  
     manager = get_model_manager()
     
     return {
@@ -191,19 +181,7 @@ async def transcribe_audio(
     language: Optional[str] = None,
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
-    """
-    Transcribe an audio file to text.
     
-    Args:
-        file (UploadFile): Audio file to transcribe
-        language (str, optional): Language code (e.g., 'en')
-        
-    Returns:
-        TranscriptionResponse: Transcription result
-        
-    Raises:
-        HTTPException: If file format is invalid or processing fails
-    """
     import time
     
     start_time = time.time()
@@ -288,24 +266,14 @@ async def transcribe_audio(
 
 @app.get(f"{API_PREFIX}/model-info", response_model=ModelInfoResponse, tags=["System"])
 async def get_model_info():
-    """
-    Get detailed information about the current model.
-    
-    Returns:
-        ModelInfoResponse: Model configuration and status
-    """
+   
     manager = get_model_manager()
     return ModelInfoResponse(**manager.get_model_info())
 
 
 @app.get(f"{API_PREFIX}/supported-formats", tags=["System"])
 async def get_supported_formats():
-    """
-    Get list of supported audio formats.
-    
-    Returns:
-        dict: Supported audio formats and constraints
-    """
+  
     return {
         "supported_formats": ALLOWED_FORMATS,
         "max_file_size_mb": MAX_UPLOAD_SIZE,

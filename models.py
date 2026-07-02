@@ -1,17 +1,3 @@
-"""
-============================================================
-PHASE 1: Offline Speech Recognition System
-Model Loading Module
-============================================================
-
-This module handles loading and managing Whisper models for
-offline speech-to-text transcription.
-
-Author: ASR Development Team
-Version: 1.0
-Date: May 30, 2026
-"""
-
 import os
 import logging
 from pathlib import Path
@@ -58,15 +44,7 @@ class WhisperModelManager:
         language: str = None,
         model_dir: str = './offline_models'
     ):
-        """
-        Initialize the Whisper Model Manager.
-        
-        Args:
-            model_size (str): Size of model (tiny, base, small, medium, large)
-            device (str): Computing device (cpu or cuda)
-            language (str): Target language for transcription
-            model_dir (str): Directory to store/load models
-        """
+       
         # Load from environment if not provided
         self.model_size = model_size or os.getenv('MODEL_SIZE', 'medium')
         self.device = device or os.getenv('DEVICE', 'cpu')
@@ -92,17 +70,7 @@ class WhisperModelManager:
         )
     
     def load_model(self) -> whisper.Whisper:
-        """
-        Load the Whisper model.
         
-        Sets environment variable to use offline models if available.
-        
-        Returns:
-            whisper.Whisper: Loaded Whisper model instance
-            
-        Raises:
-            RuntimeError: If model loading fails
-        """
         if self.model is not None:
             logger.info("Model already loaded, returning cached instance.")
             return self.model
