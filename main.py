@@ -1,5 +1,3 @@
-
-
 import os
 import sys
 import logging
@@ -188,6 +186,7 @@ async def transcribe_audio(
     
     try:
         # Validate file format
+        # pyrefly: ignore [bad-argument-type]
         file_ext = Path(file.filename).suffix.lower().lstrip('.')
         if file_ext not in ALLOWED_FORMATS:
             raise HTTPException(
@@ -197,6 +196,7 @@ async def transcribe_audio(
             )
         
         # Check file size
+        # pyrefly: ignore [unsupported-operation]
         file_size_mb = file.size / (1024 * 1024)
         if MAX_UPLOAD_SIZE > 0 and file_size_mb > MAX_UPLOAD_SIZE:
             raise HTTPException(
@@ -206,6 +206,7 @@ async def transcribe_audio(
             )
         
         # Save temporary file
+        # pyrefly: ignore [unsupported-operation]
         temp_file_path = TEMP_UPLOAD_DIR / file.filename
         with open(temp_file_path, 'wb') as f:
             content = await file.read()

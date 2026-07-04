@@ -1,19 +1,160 @@
 # 🎤 Offline Speech Recognition System (ASR)
 
-**Phase 1: Speech-to-Text Foundation**
-
-Production-ready offline speech recognition system with modular components for:
-
-- ✅ **Speech-to-Text Transcription** (Phase 1)
-- 📝 Sentiment Analysis (Phase 2)
-- 🏷️ Named Entity Recognition (Phase 2)
-- ❓ Question Answering (Phase 2)
-- 🎯 Wake Word Detection (Phase 3+)
-- 📤 Text-to-Speech (Phase 3+)
-
-**Latest Update:** May 30, 2026 - Phase 1 Complete
-
 ---
+voice-assistant/
+├── main.py                      # entry: config → Pipeline.run_forever()
+├── config.yaml                  # every latency knob lives here, not in code
+├── requirements.txt
+├── README.md                    # model table + quickstart + build order
+├── scripts/download_models.sh   # pulls Qwen GGUF + Piper voice (~2.4 GB)
+├── models/                      # GGUF/ONNX weights (gitignored)
+├── data/                        # memory.db
+├── app/
+│   ├── core/
+│   │   ├── state.py             # the FSM — all transitions live here
+│   │   ├── events.py            # thread-safe event bus
+│   │   └── pipeline.py          # wiring + thread model
+│   ├── audio/
+│   │   ├── capture.py           # mic callback + pre-roll ring buffer
+│   │   ├── wakeword.py          # openWakeWord
+│   │   ├── vad.py               # Silero + endpointing
+│   │   └── playback.py          # speaker out + instant barge-in kill
+│   ├── stt/transcriber.py       # faster-whisper int8
+│   ├── router/intent_router.py  # L1 fast path / L2 agent
+│   ├── agent/
+│   │   ├── llm_client.py        # streaming client → llama-server
+│   │   ├── orchestrator.py      # ReAct loop, grammar-constrained
+│   │   ├── prompts.py           # short spoken-style persona + GBNF
+│   │   └── response_manager.py  # tokens → sentences → TTS queue
+│   ├── tools/
+│   │   ├── registry.py          # @tool decorator → auto JSON schemas
+│   │   ├── system_tools.py      # open_app / volume / timers (whitelisted)
+│   │   └── info_tools.py        # time, safe calculator
+│   ├── memory/
+│   │   ├── short_term.py        # rolling window
+│   │   └── long_term.py         # sqlite-vec facts
+│   ├── tts/synthesizer.py       # Piper
+│   └── utils/logging.py         # per-stage latency stopwatch
+└── tests/test_pipeline.py
+
+
+voice-assistant/
+├── main.py                      # entry: config → Pipeline.run_forever()
+├── config.yaml                  # every latency knob lives here, not in code
+├── requirements.txt
+├── README.md                    # model table + quickstart + build order
+├── scripts/download_models.sh   # pulls Qwen GGUF + Piper voice (~2.4 GB)
+├── models/                      # GGUF/ONNX weights (gitignored)
+├── data/                        # memory.db
+├── app/
+│   ├── core/
+│   │   ├── state.py             # the FSM — all transitions live here
+│   │   ├── events.py            # thread-safe event bus
+│   │   └── pipeline.py          # wiring + thread model
+│   ├── audio/
+│   │   ├── audio_processor.py   # mic callback + pre-roll ring buffer
+│   │   ├── wakeword.py          # openWakeWord
+│   │   ├── vad.py               # Silero + endpointing
+│   │   └── output_handler.py    # speaker out + instant barge-in kill
+│   ├── stt/transcriber.py       # faster-whisper int8
+│   ├── router/intent_router.py  # L1 fast path / L2 agent
+│   ├── agent/
+│   │   ├── llm_client.py        # streaming client → llama-server
+│   │   ├── orchestrator.py      # ReAct loop, grammar-constrained
+│   │   ├── prompts.py           # short spoken-style persona + GBNF
+│   │   └── response_manager.py  # tokens → sentences → TTS queue
+│   ├── tools/
+│   │   ├── registry.py          # @tool decorator → auto JSON schemas
+│   │   ├── system_tools.py      # open_app / volume / timers (whitelisted)
+│   │   └── info_tools.py        # time, safe calculator
+│   ├── memory/
+│   │   ├── short_term.py        # rolling window
+│   │   └── long_term.py         # sqlite-vec facts
+│   ├── tts/synthesizer.py       # Piper
+│   └── utils/logging.py         # per-stage latency stopwatch
+└── tests/test_pipeline.py
+
+# Libray required for the purpose
+
+🎤 Microphone
+     │
+     ▼
+┌─────────────────────┐
+│  1. Audio Capture   │  sounddevice + numpy
+│     (16kHz mono)    │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  2. Ring Buffer     │  collections.deque
+│  (sliding window)   │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  3. Wake Word       │  openwakeword + onnxruntime
+│  "Hey Assistant"    │
+└────────┬────────────┘
+         │ 🔔 Triggered
+         ▼
+┌─────────────────────┐
+│  4. VAD +           │  Silero VAD + onnxruntime
+│     Endpointing     │
+└────────┬────────────┘
+         │ 🎙️ Speech segment ready
+         ▼
+┌─────────────────────┐
+│  5. STT             │  faster-whisper + ctranslate2
+│  "Turn on lights"   │
+└────────┬────────────┘
+         │ 📝 Transcript
+         ▼
+┌─────────────────────┐
+│  6. Intent Router   │  re (stdlib)
+│  L1 fast path       │◄─── Simple command? ──► ✅ Handle directly
+└────────┬────────────┘
+         │ Complex query
+         ▼
+┌─────────────────────┐
+│  7. Agent           │  pydantic + asyncio
+│     Orchestrator    │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  8. LLM Serving     │  llama.cpp + openai client
+│  (llama-server)     │◄──────────────────────┐
+└────────┬────────────┘                       │
+         │ 🔧 Tool call?                      │
+         ▼                                    │
+┌─────────────────────┐                       │
+│  9. Tool Registry   │  inspect + ast        │
+│     + Tools         │───────────────────────┘
+└────────┬────────────┘  Tool result
+         │ 💬 Final response text
+         ▼
+┌─────────────────────┐
+│  10. Response       │  re + asyncio
+│      Manager        │
+└────────┬────────────┘
+         │ 🔊 Sentence chunks
+         ▼
+┌─────────────────────┐
+│  11. TTS            │  piper-tts + onnxruntime
+│  (piper)            │  espeak-ng
+└────────┬────────────┘
+         │ 🔈 Audio bytes
+         ▼
+┌─────────────────────┐
+│  12. Playback       │  sounddevice
+│                     │
+└─────────────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  13. Long-term      │  sqlite-vec + sqlite3
+│      Memory         │  sentence-transformers
+└─────────────────────┘
 
 ## 🚀 Quick Start (5 Minutes)
 

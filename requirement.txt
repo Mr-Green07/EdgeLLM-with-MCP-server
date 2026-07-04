@@ -1,11 +1,11 @@
 
 
 # Speech Recognition & Audio Processing (Primary)
-#openai-whisper==20231117          # Speech-to-text model (local/offline)
-#torch==2.0.1                      # Deep learning framework
-#torchaudio==2.0.1                 # Audio processing library
+openai-whisper         # Speech-to-text model (local/offline)
+silero==0.5.5 
 librosa==0.10.0                   # Audio feature extraction
 scipy==1.11.0                     # Scientific computing
+sounddevice
 
 # Web Framework & API
 fastapi==0.104.1                  # Web framework for API endpoints
@@ -13,6 +13,7 @@ uvicorn==0.24.0                   # ASGI server for FastAPI
 python-multipart==0.0.6           # File upload handling
 pydantic==2.0.0                   # Data validation
 pydantic-settings==2.0.0          # Settings management
+pyrefly
 
 # Audio Processing & Recording
 pyaudio==0.2.13                   # Audio I/O
@@ -42,8 +43,3 @@ pytest==7.4.0                     # Unit testing framework
 pytest-asyncio==0.21.0            # Async test support
 black==23.0.0                     # Code formatter
 flake8==6.0.0                     # Code linter
-
-# ==================== OPTIONAL DEPENDENCIES ====================
-
-# Legacy/Optional packages (keeping for backwards compatibility)
-pyporcupine                       # Wake word detection (Phase 2+)

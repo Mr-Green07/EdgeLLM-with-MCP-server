@@ -1,0 +1,14 @@
+audio:
+  sample_rate: 16000
+  frame_ms: 30
+  preroll_ms: 1000          # audio kept from BEFORE the wake word so first words are not clipped
+  device_name: null          # substring of mic name (see sd.query_devices()); null = OS default
+  queue_max_chunks: 100      # callback->consumer queue bound; overflow drops oldest
+
+# config.yaml
+wakeword:
+  model: "models/alexa.onnx"           # built-in name or path to custom .onnx
+  threshold: 0.6                    # score threshold for detection
+  speaking_threshold: 0.75          # higher bar while TTS is playing (barge-in)
+  consecutive_frames: 2             # N frames above threshold before firing
+  cooldown_s: 2.0                   # refractory period after a detection
