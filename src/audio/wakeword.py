@@ -111,15 +111,15 @@ class WakeWordEngine:
 
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..")))
 if __name__ == "__main__":  # live test: capture -> rebuffer -> wake engine
-    import yaml
     logging.basicConfig(level=logging.INFO)
     # pyrefly: ignore [missing-import]
     from src.audio.capture import MicCapture, Rebuffer
 
     # Load config from project root
-    PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    with open(os.path.join(PROJECT_ROOT, "config.yaml"), "r") as f:
-        cfg = yaml.safe_load(f)
+    cfg = {"audio": {"preroll_ms": 1000},
+           "wakeword": {"model": "hey_jarvis", "threshold": 0.6,
+                        "consecutive_frames": 2, "cooldown_s": 2.0}}
+   
     engine = WakeWordEngine(cfg)
     cap = MicCapture(cfg)
     rb = Rebuffer(WakeWordEngine.FRAME_LEN)

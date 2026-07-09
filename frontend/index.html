@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASR Voice Console</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Colour-splash animated background -->
+  <div class="bg" aria-hidden="true">
+    <span class="blob blob--pink"></span>
+    <span class="blob blob--violet"></span>
+    <span class="blob blob--cyan"></span>
+    <span class="blob blob--amber"></span>
+    <div class="bg-noise"></div>
+  </div>
+
+  <main class="stage">
+    <!-- Top bar -->
+    <header class="topbar glass">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span>ASR&nbsp;Voice&nbsp;Console</span>
+      </div>
+      <span class="status-pill" id="status-pill">
+        <span class="status-led"></span><span id="status-text">Connecting…</span>
+      </span>
+    </header>
+
+    <!-- Transcript panel -->
+    <section class="panel glass">
+      <div class="panel-head">
+        <h2>Transcript</h2>
+        <span class="chip" id="lang-chip">auto</span>
+      </div>
+      <div class="panel-body" id="transcript">
+        <p class="placeholder">
+          Tap the floating microphone and speak — or drop / upload an audio file.
+          The offline Whisper engine transcribes it locally and the text appears here.
+        </p>
+      </div>
+      <div class="panel-foot">
+        <label class="upload glass-soft">
+          <input type="file" id="file-input" accept="audio/*" hidden />
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3l4 4h-3v6h-2V7H8l4-4zm-7 14h14v2H5v-2z"/></svg>
+          Upload audio
+        </label>
+        <span class="meta" id="meta"></span>
+      </div>
+    </section>
+
+    <!-- Model info card -->
+    <section class="panel glass model-card">
+      <div class="panel-head"><h2>Engine</h2></div>
+      <dl class="kv" id="model-info">
+        <div><dt>Model</dt><dd id="mi-model">–</dd></div>
+        <div><dt>Device</dt><dd id="mi-device">–</dd></div>
+        <div><dt>Language</dt><dd id="mi-lang">–</dd></div>
+        <div><dt>Loaded</dt><dd id="mi-loaded">–</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <!-- Floating microphone button -->
+  <button class="mic-fab" id="mic-fab" aria-label="Record">
+    <span class="mic-ring"></span>
+    <span class="mic-ring mic-ring--2"></span>
+    <svg viewBox="0 0 24 24" width="30" height="30" class="mic-glyph">
+      <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/>
+      <path fill="currentColor" d="M17 11a1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-3.08A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0z"/>
+    </svg>
+  </button>
+
+  <script src="app.js"></script>
+</body>
+</html>

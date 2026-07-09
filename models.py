@@ -17,7 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 class WhisperModelManager:
-    
+
+    # Whisper model catalogue: approximate download size and parameter count.
+    # Referenced by __init__ validation, load_model() and get_model_info().
+    VALID_MODELS = {
+        'tiny':   {'size': '39 MB',   'params': 39_000_000},
+        'base':   {'size': '74 MB',   'params': 74_000_000},
+        'small':  {'size': '244 MB',  'params': 244_000_000},
+        'medium': {'size': '769 MB',  'params': 769_000_000},
+        'large':  {'size': '1550 MB', 'params': 1_550_000_000},
+    }
+
     def __init__(
         self,
         # pyrefly: ignore [bad-function-definition]
@@ -64,19 +74,13 @@ class WhisperModelManager:
         try:
             logger.info(f"Loading Whisper model: {self.model_size} on {self.device}...")
             
-            # Set offline mode (use locally downloaded models)
+            # Load from the local model directory (offline-first);
+            # weights are downloaded there on first use and reused after.
             self.model = whisper.load_model(
                 # pyrefly: ignore [bad-argument-type]
                 self.model_size,
                 device=self.device,
                 download_root=str(self.model_dir)
-            )
-            
-            # Load model
-            self.model = whisper.load_model(
-                # pyrefly: ignore [bad-argument-type]
-                self.model_size,
-                device=self.device
             )
             
             # pyrefly: ignore [missing-attribute]

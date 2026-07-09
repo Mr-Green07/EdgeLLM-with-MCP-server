@@ -1,7 +1,6 @@
 import requests
 import json
-# pyrefly: ignore [missing-import]
-from src.voice_assistant.response_generation.exceptions import (
+from src.response_generation.exceptions import (
     ResponseGenerationError,
     LLMTimeoutError
 )

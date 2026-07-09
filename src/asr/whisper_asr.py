@@ -10,7 +10,7 @@ class WhisperASR:
             config = yaml.safe_load(file)
             
         asr_config = config.get("asr", {})
-        self.model_size = asr_config.get("model_size", "large-v3-turbo")
+        self.model_size = asr_config.get("model_size", "small")
         self.device = asr_config.get("device", "cpu")
         self.download_root = asr_config.get("download_root", "./offline_models")
         

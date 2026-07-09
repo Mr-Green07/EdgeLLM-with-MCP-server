@@ -1,430 +1,86 @@
-# 🎤 Offline Speech Recognition System (ASR)
+# 🎤 Offline Speech Recognition System (ASR) — Voice Assistant
+
+An **offline-first voice assistant** built around OpenAI Whisper. It combines a
+real-time voice pipeline (wake word → VAD → speech-to-text → response → TTS)
+with a **FastAPI REST backend** and a **glass-design desktop app** for
+transcribing audio with a click of a floating microphone.
+
+> Everything runs locally — no audio ever leaves your machine.
 
 ---
-voice-assistant/
-├── main.py                      # entry: config → Pipeline.run_forever()
-├── config.yaml                  # every latency knob lives here, not in code
-├── requirements.txt
-├── README.md                    # model table + quickstart + build order
-├── scripts/download_models.sh   # pulls Qwen GGUF + Piper voice (~2.4 GB)
-├── models/                      # GGUF/ONNX weights (gitignored)
-├── data/                        # memory.db
-├── app/
-│   ├── core/
-│   │   ├── state.py             # the FSM — all transitions live here
-│   │   ├── events.py            # thread-safe event bus
-│   │   └── pipeline.py          # wiring + thread model
-│   ├── audio/
-│   │   ├── capture.py           # mic callback + pre-roll ring buffer
-│   │   ├── wakeword.py          # openWakeWord
-│   │   ├── vad.py               # Silero + endpointing
-│   │   └── playback.py          # speaker out + instant barge-in kill
-│   ├── stt/transcriber.py       # faster-whisper int8
-│   ├── router/intent_router.py  # L1 fast path / L2 agent
-│   ├── agent/
-│   │   ├── llm_client.py        # streaming client → llama-server
-│   │   ├── orchestrator.py      # ReAct loop, grammar-constrained
-│   │   ├── prompts.py           # short spoken-style persona + GBNF
-│   │   └── response_manager.py  # tokens → sentences → TTS queue
-│   ├── tools/
-│   │   ├── registry.py          # @tool decorator → auto JSON schemas
-│   │   ├── system_tools.py      # open_app / volume / timers (whitelisted)
-│   │   └── info_tools.py        # time, safe calculator
-│   ├── memory/
-│   │   ├── short_term.py        # rolling window
-│   │   └── long_term.py         # sqlite-vec facts
-│   ├── tts/synthesizer.py       # Piper
-│   └── utils/logging.py         # per-stage latency stopwatch
-└── tests/test_pipeline.py
 
+## ✨ What's in the box
 
-voice-assistant/
-├── main.py                      # entry: config → Pipeline.run_forever()
-├── config.yaml                  # every latency knob lives here, not in code
-├── requirements.txt
-├── README.md                    # model table + quickstart + build order
-├── scripts/download_models.sh   # pulls Qwen GGUF + Piper voice (~2.4 GB)
-├── models/                      # GGUF/ONNX weights (gitignored)
-├── data/                        # memory.db
-├── app/
-│   ├── core/
-│   │   ├── state.py             # the FSM — all transitions live here
-│   │   ├── events.py            # thread-safe event bus
-│   │   └── pipeline.py          # wiring + thread model
-│   ├── audio/
-│   │   ├── audio_processor.py   # mic callback + pre-roll ring buffer
-│   │   ├── wakeword.py          # openWakeWord
-│   │   ├── vad.py               # Silero + endpointing
-│   │   └── output_handler.py    # speaker out + instant barge-in kill
-│   ├── stt/transcriber.py       # faster-whisper int8
-│   ├── router/intent_router.py  # L1 fast path / L2 agent
-│   ├── agent/
-│   │   ├── llm_client.py        # streaming client → llama-server
-│   │   ├── orchestrator.py      # ReAct loop, grammar-constrained
-│   │   ├── prompts.py           # short spoken-style persona + GBNF
-│   │   └── response_manager.py  # tokens → sentences → TTS queue
-│   ├── tools/
-│   │   ├── registry.py          # @tool decorator → auto JSON schemas
-│   │   ├── system_tools.py      # open_app / volume / timers (whitelisted)
-│   │   └── info_tools.py        # time, safe calculator
-│   ├── memory/
-│   │   ├── short_term.py        # rolling window
-│   │   └── long_term.py         # sqlite-vec facts
-│   ├── tts/synthesizer.py       # Piper
-│   └── utils/logging.py         # per-stage latency stopwatch
-└── tests/test_pipeline.py
+| Layer | Entry point | What it does |
+|-------|-------------|--------------|
+| 🖥️ **Desktop app** | `frontend/desktop.py` | Glass-design UI in a native window (pywebview) with a floating mic button |
+| 🌐 **REST API** | `server.py` | FastAPI backend: `/api/v1/transcribe` + status/model endpoints, serves the UI |
+| 🗣️ **Voice pipeline** | `main.py` | Always-on assistant: wake word → VAD endpointing → utterance capture → reply |
+| 🧠 **Model manager** | `models.py` | Loads/caches Whisper models (tiny → large), device + language config |
 
-# Libray required for the purpose
+---
 
-🎤 Microphone
-     │
-     ▼
-┌─────────────────────┐
-│  1. Audio Capture   │  sounddevice + numpy
-│     (16kHz mono)    │
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  2. Ring Buffer     │  collections.deque
-│  (sliding window)   │
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  3. Wake Word       │  openwakeword + onnxruntime
-│  "Hey Assistant"    │
-└────────┬────────────┘
-         │ 🔔 Triggered
-         ▼
-┌─────────────────────┐
-│  4. VAD +           │  Silero VAD + onnxruntime
-│     Endpointing     │
-└────────┬────────────┘
-         │ 🎙️ Speech segment ready
-         ▼
-┌─────────────────────┐
-│  5. STT             │  faster-whisper + ctranslate2
-│  "Turn on lights"   │
-└────────┬────────────┘
-         │ 📝 Transcript
-         ▼
-┌─────────────────────┐
-│  6. Intent Router   │  re (stdlib)
-│  L1 fast path       │◄─── Simple command? ──► ✅ Handle directly
-└────────┬────────────┘
-         │ Complex query
-         ▼
-┌─────────────────────┐
-│  7. Agent           │  pydantic + asyncio
-│     Orchestrator    │
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  8. LLM Serving     │  llama.cpp + openai client
-│  (llama-server)     │◄──────────────────────┐
-└────────┬────────────┘                       │
-         │ 🔧 Tool call?                      │
-         ▼                                    │
-┌─────────────────────┐                       │
-│  9. Tool Registry   │  inspect + ast        │
-│     + Tools         │───────────────────────┘
-└────────┬────────────┘  Tool result
-         │ 💬 Final response text
-         ▼
-┌─────────────────────┐
-│  10. Response       │  re + asyncio
-│      Manager        │
-└────────┬────────────┘
-         │ 🔊 Sentence chunks
-         ▼
-┌─────────────────────┐
-│  11. TTS            │  piper-tts + onnxruntime
-│  (piper)            │  espeak-ng
-└────────┬────────────┘
-         │ 🔈 Audio bytes
-         ▼
-┌─────────────────────┐
-│  12. Playback       │  sounddevice
-│                     │
-└─────────────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  13. Long-term      │  sqlite-vec + sqlite3
-│      Memory         │  sentence-transformers
-└─────────────────────┘
+## 🚀 Quick Start
 
-## 🚀 Quick Start (5 Minutes)
+### 1. Install
 
 ```bash
-# 1. Clone and navigate
-git clone https://github.com/Mr-Green07/ASR.git
-cd ASR
-
-# 2. Create virtual environment
+# from the project root
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate      # macOS/Linux
+venv\Scripts\activate           # Windows
+# source venv/bin/activate      # macOS / Linux
 
-# 3. Install dependencies
 pip install -r requirement.txt
-
-# 4. Download model
-python download_models.py --model base
-
-# 5. Start server
-python main.py
-
-# 6. Visit API documentation
-# Open: http://localhost:8000/docs
+pip install pywebview            # optional: native desktop window
 ```
 
-✅ **Done!** Your offline speech recognition system is ready.
+FFmpeg is required by Whisper — download from [ffmpeg.org](https://ffmpeg.org/download.html).
 
----
-
-## 📚 Documentation
-
-### Phase 1 Documentation (Start Here)
-
-| Document | Purpose | Read Time |
-|----------|---------|-----------|
-| [**QUICK_START.md**](docs/QUICK_START.md) | 5-10 minute setup guide | 5 min |
-| [**INSTALLATION.md**](docs/INSTALLATION.md) | Detailed installation steps | 15 min |
-| [**PHASE1_SETUP.md**](docs/PHASE1_SETUP.md) | Complete Phase 1 guide | 30 min |
-| [**API_DOCUMENTATION.md**](docs/API_DOCUMENTATION.md) | API endpoints reference | 15 min |
-| [**FOLDER_STRUCTURE.md**](docs/FOLDER_STRUCTURE.md) | Directory organization | 10 min |
-
-### Other Documentation
-
-- [Architecture Overview](docs/architecture/overview.md)
-- [Development Guide](docs/development/setup.md)
-- [Deployment Guide](docs/deployment/docker.md)
-- [API Reference](docs/api/rest_api.md)
-
----
-
-## ✨ Phase 1 Features
-
-### Core Capabilities
-
-- ✅ **Offline Speech-to-Text**: Uses OpenAI Whisper model locally
-- ✅ **FastAPI REST API**: Modern, auto-documented endpoints
-- ✅ **Multiple Audio Formats**: MP3, WAV, M4A, FLAC, OGG, WebM
-- ✅ **99+ Languages**: Auto-detection or manual specification
-- ✅ **CPU/GPU Support**: Works on CPU; faster with NVIDIA GPU
-- ✅ **Model Caching**: Efficient model loading and reuse
-- ✅ **Comprehensive Logging**: Detailed application logs
-- ✅ **Error Handling**: Robust error handling and recovery
-- ✅ **Docker Support**: Containerized deployment ready
-- ✅ **Kubernetes Ready**: K8s manifests included
-
-### Specifications
-
-| Aspect | Details |
-|--------|---------|
-| **Model** | OpenAI Whisper |
-| **Framework** | FastAPI + Uvicorn |
-| **Language** | Python 3.8+ |
-| **Processing** | CPU/CUDA |
-| **Max File Size** | 500MB (configurable) |
-| **Response Time** | <5 seconds (1 min audio on base model) |
-| **Accuracy** | >95% for clear audio |
-
----
-
-## 📁 Project Structure
-
-```
-ASR/
-├── 📄 main.py                    ⭐ FastAPI application
-├── 📄 models.py                  ⭐ Model manager
-├── 📄 download_models.py         ⭐ Model downloader
-├── 📄 whiper_test.py             ⭐ Test suite
-│
-├── ⚙️  requirement.txt             📦 Dependencies
-├── ⚙️  .env                        🔧 Configuration
-├── 📚 docs/                       📖 Documentation
-├── 🤖 offline_models/             (Downloaded models)
-├── 📤 output/                     (Transcription results)
-├── 💾 data/                       (Logs, temp, database)
-├── 💻 src/voice_assistant/        (Source code)
-├── 🧪 tests/                      (Test suite)
-└── 🐳 docker/                     (Containerization)
-```
-
-See [FOLDER_STRUCTURE.md](docs/FOLDER_STRUCTURE.md) for detailed structure.
-
----
-
-## 🔧 System Requirements
-
-### Minimum
-- Python 3.8+
-- 8 GB RAM
-- 20 GB disk space
-- Any modern CPU
-
-### Recommended
-- Python 3.10+
-- 16 GB RAM
-- 50 GB disk space
-- Intel i7 / AMD Ryzen 7
-
-### Optimal
-- Python 3.11+
-- 32 GB RAM
-- 100 GB disk space
-- Intel i9 / AMD Ryzen 9
-- NVIDIA RTX 3060+ GPU
-
----
-
-## 📦 Installation
-
-### Prerequisites
-
-1. **Python 3.8+** - Download from [python.org](https://www.python.org/downloads/)
-2. **FFmpeg** - Download from [ffmpeg.org](https://ffmpeg.org/download.html)
-3. **10 GB+ free space** - For models and operations
-
-### Installation Steps
+### 2. Run the desktop application  🖥️
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/Mr-Green07/ASR.git
-cd ASR
-
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate   # Windows
-
-# 3. Install dependencies
-pip install -r requirement.txt
-
-# 4. Download Whisper model
-python download_models.py --model base
-
-# 5. Configure (optional)
-# Edit .env file as needed
-
-# 6. Run server
-python main.py
+python frontend/desktop.py
 ```
 
-📖 See [INSTALLATION.md](docs/INSTALLATION.md) for detailed steps.
+This starts the backend **and** opens the glass UI in a native window
+(or your browser if pywebview isn't installed). Tap the floating
+microphone to record, or upload/drag-drop an audio file.
 
----
+### 3. Or run the API server only  🌐
 
-## 🚀 Usage
+```bash
+python server.py
+# UI:      http://localhost:8000/
+# Docs:    http://localhost:8000/docs   (Swagger UI, when FastAPI is installed)
+# Health:  http://localhost:8000/health
+```
 
-### Start API Server
+### 4. Or run the always-on voice pipeline  🗣️
 
 ```bash
 python main.py
-# Server runs on http://localhost:8000
-```
-
-### Access API Documentation
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Transcribe Audio
-
-**Using cURL:**
-```bash
-curl -X POST http://localhost:8000/api/v1/transcribe \
-  -F "file=@audio.mp3"
-```
-
-**Using Python:**
-```python
-import requests
-
-with open('audio.mp3', 'rb') as f:
-    response = requests.post(
-        'http://localhost:8000/api/v1/transcribe',
-        files={'file': f}
-    )
-    print(response.json()['transcript'])
-```
-
-**Using JavaScript:**
-```javascript
-const formData = new FormData();
-formData.append('file', audioFile);
-
-fetch('http://localhost:8000/api/v1/transcribe', {
-    method: 'POST',
-    body: formData
-})
-.then(r => r.json())
-.then(data => console.log(data.transcript));
-```
-
-📖 See [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) for all endpoints.
-
----
-
-## 🧪 Testing
-
-### Run Full Test Suite
-
-```bash
-python whiper_test.py
-
-# With verbose output
-python whiper_test.py --verbose
-
-# Test specific model
-python whiper_test.py --model base
-```
-
-### Expected Output
-
-```
-✓ PASS: Test 1: Environment Verification
-✓ PASS: Test 2: Model Manager Initialization
-✓ PASS: Test 3: Model Loading
-✓ PASS: Test 4: Model Information
-✓ PASS: Test 5: Device Information
-✓ PASS: Test 6: Model Transcription
-✓ PASS: Test 7: Error Handling
-
-SUMMARY: 7 passed, 0 failed out of 7 tests
+# say the wake word, speak, get a reply chime (brain wiring in progress)
 ```
 
 ---
 
 ## 🔄 API Endpoints
 
-### Core Endpoints
-
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/health` | Health check |
-| `GET` | `/api/v1/status` | System status |
-| `POST` | `/api/v1/transcribe` | Transcribe audio |
-| `GET` | `/api/v1/model-info` | Model information |
-| `GET` | `/api/v1/supported-formats` | Supported audio formats |
-| `GET` | `/api/v1/languages` | Supported languages |
+| `GET`  | `/health` | Liveness check |
+| `GET`  | `/api/v1/status` | System + model status |
+| `GET`  | `/api/v1/model-info` | Whisper model details |
+| `GET`  | `/api/v1/supported-formats` | Allowed audio formats |
+| `GET`  | `/api/v1/languages` | Common language codes |
+| `POST` | `/api/v1/transcribe` | Multipart audio upload → transcript JSON |
 
-### Example: Transcribe Audio
+**Example**
 
-**Request:**
-```http
-POST /api/v1/transcribe
-Content-Type: multipart/form-data
-
-file: <audio_file>
-language: en
+```bash
+curl -X POST http://localhost:8000/api/v1/transcribe -F "file=@audio.mp3"
 ```
 
-**Response:**
 ```json
 {
   "success": true,
@@ -432,453 +88,108 @@ language: en
   "language": "en",
   "duration": 5.2,
   "processing_time": 2.34,
-  "timestamp": "2026-05-30T12:00:00"
+  "timestamp": "2026-07-07T12:00:00+00:00"
 }
 ```
 
-📖 See [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) for complete reference.
+Supported formats: **MP3, WAV, M4A, FLAC, OGG, WebM** · 99+ languages (auto-detect or `language` form field).
+
+---
+
+## 📁 Project Structure (actual)
+
+```
+ASR/
+├── main.py                  🗣️ Voice pipeline: capture → wake → VAD → reply loop
+├── server.py                🌐 FastAPI backend + serves frontend (stdlib fallback included)
+├── models.py                🧠 WhisperModelManager (load/cache/info/device)
+├── audio.py                 🎙️ RealtimeSTT live-transcription demo
+├── whiper_test.py           🔊 Piper TTS smoke test
+├── config.yaml              ⚙️ Audio + wake-word pipeline tuning knobs
+├── .env                     ⚙️ Model / API / logging configuration
+├── requirement.txt          📦 Dependencies (also see requirements/)
+│
+├── frontend/                🖥️ Glass-design desktop app
+│   ├── desktop.py           ⭐ Launch as a desktop application
+│   ├── index.html           UI: floating mic, transcript panel, engine card
+│   ├── styles.css           Glassmorphism theme + colour-splash background
+│   └── app.js               Recording, upload, API calls
+│
+├── src/
+│   ├── core/                FSM (state.py), event bus (events.py), config
+│   ├── audio/               Mic capture, wake word, Silero VAD, playback
+│   ├── asr/                 Whisper transcriber(s), processor, exceptions
+│   ├── nlu/                 Intent detection (rule-based Phase 1)
+│   ├── response_generation/ Ollama/LLM response engine, templates
+│   ├── storage/             SQLAlchemy models + SQLite conversation log
+│   ├── tts/                 Piper TTS (exceptions; synth in progress)
+│   ├── wake_word/           openWakeWord live detector demo
+│   ├── api/                 API schemas (routers scaffolded)
+│   ├── tasks/, utils/, llm/ Scaffolding for later phases
+│   └── __init__.py          Package overview docstring
+│
+├── tests/                   Unit tests: capture, VAD, wake word, playback
+├── docs/                    📚 CODE_DOCUMENTATION.md — every file & function
+├── offline_models/          Whisper .pt + Piper .onnx voices (local)
+├── scripts/                 Model download helpers (Qwen GGUF, Piper, Silero)
+└── data/                    Logs, SQLite DB, cache, temp uploads
+```
 
 ---
 
 ## ⚙️ Configuration
 
-### Environment Variables (.env)
+All knobs live in **`.env`** (model size/device/language, API host/port,
+upload limits, logging) and **`config.yaml`** (audio capture + wake-word
+thresholds). Key `.env` entries:
 
 ```env
-# Model Configuration
-MODEL_SIZE=base           # tiny, base, small, medium, large
-DEVICE=cpu                # cpu or cuda
-LANGUAGE=en               # Language code
-
-# API Configuration
-API_HOST=0.0.0.0
+MODEL_SIZE=small        # tiny | base | small | medium | large
+DEVICE=cuda             # cpu | cuda
+LANGUAGE=en
 API_PORT=8000
-API_PREFIX=/api/v1
-
-# Output Configuration
-OUTPUT_FORMAT=json        # json, txt, vtt, srt
-OUTPUT_DIR=./output
-MAX_UPLOAD_SIZE=500       # MB
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=./data/logs/phase1.log
+MAX_UPLOAD_SIZE=500     # MB
 ```
 
-See [PHASE1_SETUP.md](docs/PHASE1_SETUP.md) for all configuration options.
+Whisper weights are cached in `offline_models/` on first load
+(`medium.pt` and `small.pt` are already present).
 
 ---
 
-## 🐳 Docker Support
-
-### Build Image
+## 🧪 Testing
 
 ```bash
-docker build -f docker/Dockerfile -t asr:phase1 .
-```
-
-### Run Container
-
-```bash
-docker run -p 8000:8000 \
-  -v $(pwd)/offline_models:/app/offline_models \
-  -v $(pwd)/output:/app/output \
-  asr:phase1
-```
-
-### Using Docker Compose
-
-```bash
-docker-compose -f docker/docker-compose.yml up
+python -m pytest tests/          # unit tests (capture, VAD, wake word, playback)
+python whiper_test.py            # Piper TTS smoke test
 ```
 
 ---
 
-## ☸️ Kubernetes Deployment
+## 📚 Documentation
 
-### Deploy to Kubernetes
-
-```bash
-# Apply manifests
-kubectl apply -f kubernetes/namespace.yaml
-kubectl apply -f kubernetes/deployment.yaml
-kubectl apply -f kubernetes/service.yaml
-
-# Check status
-kubectl get pods -n asr
-kubectl get svc -n asr
-
-# Access service
-kubectl port-forward svc/asr-service 8000:8000 -n asr
-```
-
-### Using Helm
-
-```bash
-helm install asr kubernetes/helm/ \
-  -f kubernetes/helm/values-dev.yaml
-```
+- **[docs/CODE_DOCUMENTATION.md](docs/CODE_DOCUMENTATION.md)** — file-by-file
+  reference: what every file is for and what every function does.
+- `src/core/state.py` docstring — the assistant state machine diagram.
+- `http://localhost:8000/docs` — interactive Swagger API docs (server running).
 
 ---
 
-## 📊 Supported Audio Formats
+## 🗺️ Status / Roadmap
 
-| Format | Extension | Status |
-|--------|-----------|--------|
-| MP3 | `.mp3` | ✅ Recommended |
-| WAV | `.wav` | ✅ Recommended |
-| M4A | `.m4a` | ✅ Supported |
-| FLAC | `.flac` | ✅ Supported |
-| OGG | `.ogg` | ✅ Supported |
-| WebM | `.webm` | ✅ Supported |
-
----
-
-## 🌍 Supported Languages
-
-Whisper supports **99+ languages** including:
-
-- English, Spanish, French, German
-- Chinese, Japanese, Korean
-- Russian, Arabic, Portuguese
-- And many more...
-
-Use language code or leave empty for auto-detection.
-
----
-
-## 🛠️ Troubleshooting
-
-### Issue: "Port 8000 in use"
-
-```bash
-# Change port in .env
-API_PORT=8001
-```
-
-### Issue: "Model download fails"
-
-```bash
-# Try smaller model
-python download_models.py --model tiny
-
-# Check internet connection
-ping github.com
-```
-
-### Issue: "Slow transcription"
-
-```bash
-# Use GPU if available
-# In .env: DEVICE=cuda
-
-# Or use smaller model
-# In .env: MODEL_SIZE=tiny
-```
-
-See [PHASE1_SETUP.md](docs/PHASE1_SETUP.md#troubleshooting) for more solutions.
-
----
-
-## 📈 Performance
-
-### Typical Performance (on CPU - Intel i7, 16GB RAM)
-
-| Model | Load Time | Transcribe 1min Audio | Accuracy |
-|-------|-----------|----------------------|----------|
-| Tiny | 0.5s | 3-5s | 90% |
-| Base | 1-2s | 5-8s | 95% |
-| Small | 2-3s | 8-10s | 96% |
-| Medium | 3-4s | 12-15s | 97% |
-| Large | 4-5s | 20-25s | 98% |
-
-**Note:** Times vary based on system. GPU accelerates significantly.
-
----
-
-## 🗺️ Roadmap
-
-### Phase 1 ✅ (Complete)
-- Speech-to-text transcription
-- FastAPI REST API
-- Offline capability
-- Multi-format support
-- Comprehensive logging
-
-### Phase 2 📋 (Planned)
-- Sentiment analysis
-- Named entity recognition
-- Question answering
-- Redis caching
-- Advanced error handling
-
-### Phase 3 📋 (Planned)
-- Voice activity detection
-- Speaker identification
-- Multi-language real-time processing
-- WebSocket streaming
-- Performance optimization
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
----
-
-## 📄 License
-
-This project is licensed under the [License](LICENSE) file.
-
----
-
-## 👥 Team
-
-- **Project Lead:** ASR Development Team
-- **Contributors:** See CONTRIBUTING.md
-
----
-
-## 📞 Support
-
-For issues and questions:
-
-- 📖 Check documentation in `/docs`
-- 🐛 Open a GitHub issue
-- 💬 Check existing issues for solutions
-- 📋 Review logs in `./data/logs/`
+| Component | Status |
+|-----------|--------|
+| Whisper model manager (`models.py`) | ✅ Working |
+| FastAPI backend (`server.py`) | ✅ Working (with stdlib fallback) |
+| Glass desktop app (`frontend/`) | ✅ Working |
+| Audio pipeline: capture / wake / VAD / playback | ✅ Implemented + unit tests |
+| Pipeline "brain" (STT → intent → LLM → TTS wiring) | 🔧 In progress (`main.py` placeholder reply) |
+| NLU / response generation / storage | 🔧 Early modules present |
+| API routers under `src/api/` | 📋 Scaffolded |
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **OpenAI Whisper** - Speech recognition model
-- **FastAPI** - Web framework
-- **PyTorch** - Deep learning framework
+**OpenAI Whisper** · **FastAPI** · **Silero VAD** · **openWakeWord** · **Piper TTS** · **RealtimeSTT**
 
----
-
-## 📋 Phase 1 Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Core Setup | ✅ Complete | Installation & configuration ready |
-| Model Loading | ✅ Complete | Whisper model manager implemented |
-| API Server | ✅ Complete | FastAPI with full endpoints |
-| Testing | ✅ Complete | Comprehensive test suite |
-| Documentation | ✅ Complete | Full Phase 1 documentation |
-| Deployment | ✅ Ready | Docker & Kubernetes support |
-
-**Phase 1 Ready for Production!** 🎉
-
----
-
-## 📍 Next Steps
-
-1. ✅ Read [QUICK_START.md](docs/QUICK_START.md)
-2. ✅ Follow [INSTALLATION.md](docs/INSTALLATION.md)
-3. ✅ Review [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)
-4. ✅ Test with your audio files
-5. ✅ Configure for your environment
-6. ✅ Deploy to production
-
----
-
-**Last Updated:** May 30, 2026  
-**Version:** 1.0.0  
-**Status:** Phase 1 Complete ✅
-```
-
-Windows (Git Bash):
-
-```bash
-python -m venv .venv
-source .venv/Scripts/activate
-```
-
-If you are not using a virtual environment, you can install dependencies directly in your system Python:
-
-```bash
-python -m pip install --upgrade pip
-pip install -r requirements/base.txt
-pip install -r requirements/dev.txt
-```
-
-Note: Installing without a venv can cause version conflicts with other Python projects on the same machine.
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements/base.txt
-pip install -r requirements/dev.txt
-```
-
-## Development
-
-Use this layout as the baseline implementation guide:
-
-- Core orchestration: `src/voice_assistant/core/orchestrator.py`
-- API service: `src/voice_assistant/api/server.py`
-- Audio input/output pipeline: `src/voice_assistant/audio/`
-
-You can add module-level implementations incrementally while preserving package boundaries.
-
-## Phase-wise Implementation Plan
-
-Use this project in delivery phases so each step produces a verifiable output before moving forward.
-
-### Phase 1: Foundation and Environment Setup
-
-Goal: Create a stable local development environment and baseline project structure.
-
-- Set up Python environment and install dependencies from `requirements/base.txt` and `requirements/dev.txt`.
-- Validate configuration loading from `config/base.yaml` and environment files (`development.yaml`, `testing.yaml`, etc.).
-- Confirm basic project bootstrapping using entry points such as `main.py` and `first.py`.
-
-Expected output:
-
-- Development environment is reproducible.
-- Team can run the project locally without configuration errors.
-
-### Phase 2: Core Pipeline Skeleton
-
-Goal: Implement the end-to-end control flow skeleton without full model optimization.
-
-- Build orchestrator flow in `src/voice_assistant/core/orchestrator.py`.
-- Define module interfaces for audio input, ASR, NLU, task execution, response generation, and TTS.
-- Add structured logging and error handling hooks.
-
-Expected output:
-
-- A full request lifecycle can execute through stub or early-stage modules.
-- Pipeline boundaries are clearly separated for future improvements.
-
-### Phase 3: Audio and ASR Layer
-
-Goal: Capture audio reliably and convert speech to text.
-
-- Implement audio capture/preprocessing in `src/voice_assistant/audio/`.
-- Integrate ASR model configuration from `config/models/asr_config.yaml`.
-- Add fallback behavior for noisy/empty input and timeout scenarios.
-
-Expected output:
-
-- Speech input is converted into text with measurable baseline quality.
-- Audio edge cases are handled gracefully.
-
-### Phase 4: NLU and Intent Workflow
-
-Goal: Convert ASR text into intents, entities, and actionable context.
-
-- Implement intent and entity extraction using `config/models/nlu_config.yaml`.
-- Define intent routing and validation rules in the core layer.
-- Add confidence thresholds and fallback intent strategy.
-
-Expected output:
-
-- User utterances map to intents/entities consistently.
-- Unknown or low-confidence intents follow a safe fallback path.
-
-### Phase 5: Task Execution and Response Generation
-
-Goal: Execute business actions and generate response text.
-
-- Implement task handlers/services under the application service layer.
-- Integrate response generation settings via `config/models/llm_config.yaml`.
-- Add response templates and policy checks for robust outputs.
-
-Expected output:
-
-- Intent-to-action flow is functional.
-- System returns relevant and safe response text for supported commands.
-
-### Phase 6: TTS and User Output
-
-Goal: Convert final response text into natural audio output.
-
-- Integrate TTS using `config/models/tts_config.yaml`.
-- Tune voice parameters (speed, tone, language/locale settings).
-- Ensure output playback and failure recovery logic are in place.
-
-Expected output:
-
-- Voice response is generated and delivered consistently.
-- Text-only fallback exists when TTS fails.
-
-### Phase 7: API, Data, and Integration Hardening
-
-Goal: Expose stable APIs and ensure service reliability.
-
-- Finalize API surface in `src/voice_assistant/api/server.py` and align with `docs/api/openapi.yaml`.
-- Validate persistence/logging paths under `data/` and `monitoring/`.
-- Implement integration tests in `tests/integration/` and E2E scenarios in `tests/e2e/`.
-
-Expected output:
-
-- API is testable and documented.
-- Cross-module interactions are validated in realistic workflows.
-
-### Phase 8: Performance, Deployment, and Operations
-
-Goal: Prepare production deployment with observability and scaling.
-
-- Run performance benchmarks from `tests/performance/` and tune bottlenecks.
-- Package and deploy with `docker/` and `kubernetes/` assets.
-- Enable metrics, logs, and tracing from `monitoring/` for production operations.
-
-Expected output:
-
-- System is deployable and observable in production-like environments.
-- Performance and reliability targets are measured and tracked.
-
-## Running Tests
-
-```bash
-pytest
-```
-
-Run specific suites:
-
-```bash
-pytest tests/unit
-pytest tests/integration
-pytest tests/e2e
-pytest tests/performance
-```
-
-## Quality Checks
-
-Typical checks used in this project:
-
-- Linting
-- Formatting
-- Type checks
-- Security scanning
-
-These are automated in CI under `.github/workflows/`.
-
-## Deployment
-
-- Local containers: `docker/docker-compose.yml`
-- Production-style manifests: `kubernetes/`
-- Monitoring setup: `monitoring/`
-
-## Contribution
-
-Please review:
-
-- `CONTRIBUTING.md`
-- `CODE_OF_CONDUCT.md`
-
-## License
-
-See `LICENSE`.
+**Version:** 1.1.0 · **Last updated:** July 7, 2026
