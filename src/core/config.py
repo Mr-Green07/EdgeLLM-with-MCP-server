@@ -1,10 +1,9 @@
-<<<<<<< HEAD
+
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-=======
 
 # src/core/config.py
 import os
@@ -56,5 +55,4 @@ LLM_MODEL_NAME = config.llm_model_name
 LLM_TEMP = config.llm_temperature
 LLM_MAX_TOKENS = config.llm_max_tokens
 DEBUG_TTS = config.debug_tts
->>>>>>> 1bb33cbb1dcf5e9fd02dab74389d493abeaf5bc3
 DATABASE_URL = os.getenv("DATABASE_URL")
