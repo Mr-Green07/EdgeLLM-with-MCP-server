@@ -57,8 +57,4 @@
 
 # print(completion.choices[0].message)
 
-a = 1000
-b = 10 * 100
-c = ("1000")
-d = 500 + 500
-print(a is b, a is c, a == d)
+
