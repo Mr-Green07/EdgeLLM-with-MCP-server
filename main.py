@@ -25,15 +25,16 @@ import sys
 import logging
 import threading
 
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
+
 import numpy as np
+import yaml
 
 from src.audio.capture import MicCapture, Rebuffer
 from src.core.events import Event, EventBus
 from src.core.state import State, StateMachine
 
 log = logging.getLogger(__name__)
-
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
 class Pipeline:
     def __init__(self, cfg: dict, *, capture=None, wake=None, vad=None,
                  playback=None, on_utterance=None) -> None:
@@ -50,7 +51,7 @@ class Pipeline:
             from src.audio.vad import VadEndpointer
             vad = VadEndpointer(cfg)
         if playback is None:
-            from src.audio.playback import Playback
+            from src.audio.output_handler import Playback
             playback = Playback(cfg)
         self.capture, self.wake, self.vad, self.playback = \
             capture, wake, vad, playback
@@ -60,10 +61,22 @@ class Pipeline:
         self._wake_tail = int(
             16000 * cfg.get("audio", {}).get("wake_tail_ms", 300) / 1000)
         self._stop = threading.Event()
+        # push-to-talk state (--no-wake mode only)
+        self._ptt_buf: list[np.ndarray] = []
+        self._ptt_recording = threading.Event()   # set = mic open for recording
+        self._no_wake = False
 
     # ---- audio worker thread --------------------------------------------
     def _audio_worker(self) -> None:
+        _frames = 0
+        _LOG_EVERY = 200   # ~every 16 s; reduce to 50 for noisier debug
         for chunk in self.capture.chunks():
+            # push-to-talk: just accumulate raw audio, skip wake+VAD entirely
+            if self._no_wake:
+                if self._ptt_recording.is_set():
+                    self._ptt_buf.append(chunk)
+                continue
+
             for frame in self._wake_rb.push(chunk):
                 if self.wake.process(frame):
                     st = self.fsm.state
@@ -73,17 +86,32 @@ class Pipeline:
                     elif st == State.IDLE:
                         self.bus.publish(Event("wake"))
                     # wake during LISTENING/THINKING: already engaged, ignore
+                _frames += 1
+                if _frames % _LOG_EVERY == 0:
+                    log.debug("wake score=%.3f state=%s",
+                              self.wake.last_score, self.fsm.state.name)
             if self.fsm.state == State.LISTENING:
                 for frame in self._vad_rb.push(chunk):
                     ev = self.vad.process(frame)
                     if ev is not None:
                         self.bus.publish(Event(ev.kind, ev))
+                    else:
+                        log.debug("vad prob=%.3f", self.vad.last_prob)
 
     # ---- main loop --------------------------------------------------------
-    def run_forever(self) -> None:
+    def run_forever(self, no_wake: bool = False) -> None:
+        self._no_wake = no_wake
         threading.Thread(target=self._audio_worker,
                          name="audio", daemon=True).start()
-        log.info("ready -- say the wake word")
+        if no_wake:
+            threading.Thread(target=self._keyboard_trigger,
+                             name="keyboard", daemon=True).start()
+            print("\n[push-to-talk mode]")
+            print("  ENTER        → start recording")
+            print("  ENTER again  → stop & send to brain")
+            print("  Ctrl-C       → quit\n")
+        else:
+            log.info("ready -- say the wake word")
         try:
             while not self._stop.is_set():
                 ev = self.bus.next(timeout=0.2)
@@ -93,6 +121,51 @@ class Pipeline:
             pass
         finally:
             self.shutdown()
+
+    def _keyboard_trigger(self) -> None:
+        """Push-to-talk: Enter starts recording, Enter again stops and sends."""
+        import time
+        while not self._stop.is_set():
+            # ---- wait for first Enter (start recording) --------------------
+            try:
+                input()
+            except EOFError:
+                break
+
+            if self.fsm.state == State.SPEAKING:
+                self.playback.stop()   # barge-in
+                self.fsm.transition(State.IDLE)
+
+            if self.fsm.state != State.IDLE:
+                print(f"[ptt] busy ({self.fsm.state.name}), wait and try again")
+                continue
+
+            # Start recording
+            self._ptt_buf.clear()
+            self._ptt_recording.set()
+            self.fsm.transition(State.LISTENING)
+            self.playback.chime()
+            print("[ptt] ● Recording... press ENTER to stop")
+
+            # ---- wait for second Enter (stop recording) --------------------
+            try:
+                input()
+            except EOFError:
+                self._ptt_recording.clear()
+                break
+
+            self._ptt_recording.clear()
+            print("[ptt] ■ Stopped")
+
+            if not self._ptt_buf:
+                print("[ptt] no audio captured, try again")
+                self.fsm.transition(State.IDLE)
+                continue
+
+            audio = np.concatenate(self._ptt_buf)
+            dur = len(audio) / 16000
+            log.info("[ptt] captured %.2f s of audio — sending to brain", dur)
+            self._respond(audio)
 
     def shutdown(self) -> None:
         self._stop.set()
@@ -158,3 +231,28 @@ class Pipeline:
         for f in (660.0, 440.0):                   # descending: "heard you"
             self.playback.enqueue(0.2 * np.sin(2 * np.pi * f * t) * env)
         self.playback.end_of_utterance()
+
+
+def _load_config(path: str = "config.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--debug", action="store_true", help="show wake-word scores")
+    ap.add_argument("--no-wake", action="store_true",
+                    help="bypass wake word; press Enter to start listening")
+    args = ap.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    )
+    cfg = _load_config(os.path.join(os.path.dirname(__file__), "config.yaml"))
+
+    from src.core.brain import Brain
+    brain = Brain(cfg)
+
+    pipeline = Pipeline(cfg, on_utterance=brain.on_utterance)
+    pipeline.run_forever(no_wake=args.no_wake)

@@ -262,7 +262,26 @@ def run_fallback_server() -> None:
 
 
 # ================================================================== entry
+def _port_in_use(host: str, port: int) -> bool:
+    """Return True if *port* is already bound on *host*."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host if host != "0.0.0.0" else "127.0.0.1", port))
+        except OSError:
+            return True
+    return False
+
+
 def main() -> None:
+    if _port_in_use(API_HOST, API_PORT):
+        print(
+            f"! Port {API_PORT} is already in use — the backend is probably "
+            f"running already (started by desktop.py?).\n"
+            f"  Open http://localhost:{API_PORT} in your browser or run "
+            f"'python frontend/desktop.py' instead."
+        )
+        return
     try:
         import uvicorn
         app = build_fastapi_app()

@@ -12,7 +12,7 @@ class LLMResponseGenerator:
         """
         self.llm_config = config.get("llm", {})
         self.provider = self.llm_config.get("provider", "ollama")
-        self.model_name = self.llm_config.get("model_name", "gemma2:2b-it-qat")
+        self.model_name = self.llm_config.get("model_name", "gemma4:e2b-it-qat")
         self.base_url = self.llm_config.get("base_url", "http://localhost:11434")
 
     def generate_response(self, user_prompt: str, context: str = "") -> str:

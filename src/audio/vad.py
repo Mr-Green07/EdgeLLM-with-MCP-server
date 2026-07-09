@@ -92,6 +92,7 @@ class SileroOnnx:
 
 class VadEndpointer:
     """Feed 512-sample int16 frames; get speech_start/endpoint/timeout events."""
+    FRAME_LEN = FRAME_LEN  # expose as class attribute for pipeline wiring
 
     def __init__(self, cfg: dict, model=None) -> None:  # model injectable: tests
         v = cfg["vad"]
