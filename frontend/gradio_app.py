@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-import gradio as gr  # noqa: E402
+import gradio as gr  # type: ignore # noqa: E402
 
 # ---------------------------------------------------------------- model glue
 try:
