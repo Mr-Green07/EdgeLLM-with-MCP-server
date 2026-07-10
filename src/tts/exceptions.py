@@ -1,23 +1,19 @@
-class TTSException(Exception):
-    """Base exception for TTS module"""
+from src.utils.exceptions import AppError
+
+class TTSError(AppError):
+    """
+    Base exception for everything in the Text-to-Speech (TTS) layer.
+    """
     pass
 
-
-class AudioPlaybackError(TTSException):
-    """Raised when audio playback fails"""
-    pass
-
-
-class SynthesisError(TTSException):
-    """Raised when text-to-speech synthesis fails"""
-    pass
-
-
-class VoiceNotFoundError(TTSException):
-    """Raised when requested voice is not available"""
-    pass
-
-
-class InvalidAudioFormatError(TTSException):
-    """Raised when audio format is not supported"""
+class SynthesisFailedError(TTSError):
+    """
+    Raised when the TTS engine (e.g., Piper, pyttsx3) fails to convert 
+    the text string into an audio stream.
+    
+    Examples:
+      - The text contains unsupported characters (e.g., weird emojis).
+      - The TTS voice model file (.onnx) is missing or corrupted.
+      - The audio device is locked by another application.
+    """
     pass

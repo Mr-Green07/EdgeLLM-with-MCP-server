@@ -1,17 +1,19 @@
-"""Exceptions for the response-generation (LLM) module."""
+from src.utils.exceptions import AppError
 
-
-class ResponseGenerationError(Exception):
-    """Raised when the LLM backend cannot produce a response
-    (unsupported provider, HTTP error, model missing, connection refused)."""
+class ResponseGenerationError(AppError):
+    """
+    Base exception for the LLM response generation layer.
+    Fires when the assistant fails to generate a verbal reply.
+    """
     pass
-
 
 class LLMTimeoutError(ResponseGenerationError):
-    """Raised when the local LLM (Ollama) exceeds the generation timeout."""
-    pass
-
-
-class InvalidPromptError(ResponseGenerationError):
-    """Raised when the prompt is empty or malformed."""
+    """
+    Raised when the connection to the local LLM (Ollama / llama.cpp) 
+    takes too long to respond.
+    
+    This is critical because in a voice assistant, if the LLM hangs for 30 seconds,
+    the user will think the assistant is broken. We catch this to immediately
+    trigger a fallback "I'm having trouble thinking right now" TTS response.
+    """
     pass
