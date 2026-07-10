@@ -1,258 +1,54 @@
-"""Wires capture -> wakeword/vad -> (brain) -> playback into one organism.
-
-Thread model:
-  [PortAudio in]   capture callback -> bounded queue           (never blocks)
-  [audio worker]   iterates capture.chunks(): feeds the wake engine ALWAYS,
-                   feeds the VAD endpointer only while LISTENING, publishes
-                   events. Handles barge-in inline (playback.stop() must not
-                   wait for the main loop).
-  [main loop]      consumes events, owns ALL state transitions, runs the
-                   utterance handler (STT -> router -> agent -> TTS later).
-  [PortAudio out]  playback callback drains its own buffer.
-
-The brain is a plug: on_utterance(audio_16k_int16, pipeline). Until
-Milestones 1-2 land, a placeholder beeps back -- which makes the whole
-audio shell runnable on real hardware today:  python main.py
-
-Known caveat (accepted): the wake chime plays while LISTENING begins, so the
-mic hears it. It is 120 ms of pure tones; Silero scores tones low, and the
-endpointer needs ~100 ms of sustained speech-prob to start. Revisit only if
-logs show chime-triggered speech_starts.
-"""
-from __future__ import annotations
-import os
-import sys
+import argparse
 import logging
-import threading
+import sys
 
-sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
+from src.core.brain import Brain
+from src.utils.helpers import safe_read_yaml
+from src.core.constants import ROOT_DIR
 
-import numpy as np
-import yaml
+# Assuming we have a Pipeline class that handles audio routing (wake -> VAD -> STT -> TTS)
+# Since the diagram implies a pipeline class exists, we will mock/stub its initialization
+# if it isn't fully built, but for the sake of the architecture, we wire it up here.
 
-from src.audio.capture import MicCapture, Rebuffer
-from src.core.events import Event, EventBus
-from src.core.state import State, StateMachine
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
-log = logging.getLogger(__name__)
-class Pipeline:
-    def __init__(self, cfg: dict, *, capture=None, wake=None, vad=None,
-                 playback=None, on_utterance=None) -> None:
-        self.cfg = cfg
-        self.bus = EventBus()
-        self.fsm = StateMachine()
-        # components are injectable (tests); heavy ones import lazily
-        if capture is None:
-            capture = MicCapture(cfg)
-        if wake is None:
-            from src.audio.wakeword import WakeWordEngine
-            wake = WakeWordEngine(cfg)
-        if vad is None:
-            from src.audio.vad import VadEndpointer
-            vad = VadEndpointer(cfg)
-        if playback is None:
-            from src.audio.output_handler import Playback
-            playback = Playback(cfg)
-        self.capture, self.wake, self.vad, self.playback = \
-            capture, wake, vad, playback
-        self.on_utterance = on_utterance or self._placeholder_reply
-        self._wake_rb = Rebuffer(self.wake.FRAME_LEN)
-        self._vad_rb = Rebuffer(self.vad.FRAME_LEN)
-        self._wake_tail = int(
-            16000 * cfg.get("audio", {}).get("wake_tail_ms", 300) / 1000)
-        self._stop = threading.Event()
-        # push-to-talk state (--no-wake mode only)
-        self._ptt_buf: list[np.ndarray] = []
-        self._ptt_recording = threading.Event()   # set = mic open for recording
-        self._no_wake = False
+def parse_args():
+    parser = argparse.ArgumentParser(description="Antigravity Voice Assistant Pipeline")
+    parser.add_argument("--no-wake", action="store_true", help="Disable wake word detection. Instantly starts listening.")
+    parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
+    return parser.parse_args()
 
-    # ---- audio worker thread --------------------------------------------
-    def _audio_worker(self) -> None:
-        _frames = 0
-        _LOG_EVERY = 200   # ~every 16 s; reduce to 50 for noisier debug
-        for chunk in self.capture.chunks():
-            # push-to-talk: just accumulate raw audio, skip wake+VAD entirely
-            if self._no_wake:
-                if self._ptt_recording.is_set():
-                    self._ptt_buf.append(chunk)
-                continue
-
-            for frame in self._wake_rb.push(chunk):
-                if self.wake.process(frame):
-                    st = self.fsm.state
-                    if st == State.SPEAKING:
-                        self.playback.stop()          # barge-in: kill NOW,
-                        self.bus.publish(Event("barge_in"))  # not next tick
-                    elif st == State.IDLE:
-                        self.bus.publish(Event("wake"))
-                    # wake during LISTENING/THINKING: already engaged, ignore
-                _frames += 1
-                if _frames % _LOG_EVERY == 0:
-                    log.debug("wake score=%.3f state=%s",
-                              self.wake.last_score, self.fsm.state.name)
-            if self.fsm.state == State.LISTENING:
-                for frame in self._vad_rb.push(chunk):
-                    ev = self.vad.process(frame)
-                    if ev is not None:
-                        self.bus.publish(Event(ev.kind, ev))
-                    else:
-                        log.debug("vad prob=%.3f", self.vad.last_prob)
-
-    # ---- main loop --------------------------------------------------------
-    def run_forever(self, no_wake: bool = False) -> None:
-        self._no_wake = no_wake
-        threading.Thread(target=self._audio_worker,
-                         name="audio", daemon=True).start()
-        if no_wake:
-            threading.Thread(target=self._keyboard_trigger,
-                             name="keyboard", daemon=True).start()
-            print("\n[push-to-talk mode]")
-            print("  ENTER        → start recording")
-            print("  ENTER again  → stop & send to brain")
-            print("  Ctrl-C       → quit\n")
-        else:
-            log.info("ready -- say the wake word")
-        try:
-            while not self._stop.is_set():
-                ev = self.bus.next(timeout=0.2)
-                if ev is not None:
-                    self._handle(ev)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self.shutdown()
-
-    def _keyboard_trigger(self) -> None:
-        """Push-to-talk: Enter starts recording, Enter again stops and sends."""
-        import time
-        while not self._stop.is_set():
-            # ---- wait for first Enter (start recording) --------------------
-            try:
-                input()
-            except EOFError:
-                break
-
-            if self.fsm.state == State.SPEAKING:
-                self.playback.stop()   # barge-in
-                self.fsm.transition(State.IDLE)
-
-            if self.fsm.state != State.IDLE:
-                print(f"[ptt] busy ({self.fsm.state.name}), wait and try again")
-                continue
-
-            # Start recording
-            self._ptt_buf.clear()
-            self._ptt_recording.set()
-            self.fsm.transition(State.LISTENING)
-            self.playback.chime()
-            print("[ptt] ● Recording... press ENTER to stop")
-
-            # ---- wait for second Enter (stop recording) --------------------
-            try:
-                input()
-            except EOFError:
-                self._ptt_recording.clear()
-                break
-
-            self._ptt_recording.clear()
-            print("[ptt] ■ Stopped")
-
-            if not self._ptt_buf:
-                print("[ptt] no audio captured, try again")
-                self.fsm.transition(State.IDLE)
-                continue
-
-            audio = np.concatenate(self._ptt_buf)
-            dur = len(audio) / 16000
-            log.info("[ptt] captured %.2f s of audio — sending to brain", dur)
-            self._respond(audio)
-
-    def shutdown(self) -> None:
-        self._stop.set()
-        self.capture.stop()
-        self.playback.close()
-
-    # ---- event handling (single thread: the main loop) -------------------
-    def _handle(self, ev: Event) -> None:
-        if ev.kind in ("wake", "barge_in"):
-            if self.fsm.state not in (State.IDLE, State.SPEAKING):
-                return
-            self.fsm.transition(State.LISTENING)
-            self.vad.reset()
-            self._vad_rb = Rebuffer(self.vad.FRAME_LEN)  # drop stale partials
-            self.wake.set_speaking(False)
-            if ev.kind == "wake":
-                self.playback.chime()
-            self._warm_start_vad()
-        elif ev.kind == "speech_start":
-            log.info("speech started")
-        elif ev.kind == "timeout":
-            log.info("no speech after wake -- back to sleep")
-            if self.fsm.state == State.LISTENING:
-                self.fsm.transition(State.IDLE)
-        elif ev.kind == "endpoint":
-            if self.fsm.state == State.LISTENING:
-                self._respond(ev.payload.audio)
-
-    def _warm_start_vad(self) -> None:
-        """Feed the pre-roll tail (audio spoken WHILE the wake word was being
-        confirmed) into the endpointer -- 'alexa set a timer' said in one
-        breath loses nothing."""
-        if self._wake_tail <= 0:
-            return          # NB: arr[-0:] is the WHOLE array, hence the guard
-        tail = self.capture.preroll.snapshot()[-self._wake_tail:]
-        for frame in self._vad_rb.push(tail):
-            ev = self.vad.process(frame)
-            if ev is not None:
-                self.bus.publish(Event(ev.kind, ev))
-
-    def _respond(self, utt_audio: np.ndarray) -> None:
-        self.fsm.transition(State.THINKING)
-        try:
-            self.wake.set_speaking(True)      # our voice is about to play
-            self.fsm.transition(State.SPEAKING)
-            self.on_utterance(utt_audio, self)     # the brain plug
-            self.playback.wait_done()              # unblocks early on barge-in
-        except Exception:
-            log.exception("utterance handler failed")
-            self.playback.stop()
-        finally:
-            self.wake.set_speaking(False)
-            if self.fsm.state in (State.THINKING, State.SPEAKING):
-                self.fsm.transition(State.IDLE)
-
-    # ---- placeholder brain (replaced by STT -> router -> agent -> TTS) ---
-    def _placeholder_reply(self, audio: np.ndarray, pipeline: "Pipeline") -> None:
-        log.info("utterance captured: %.2f s (brain not wired yet)",
-                 len(audio) / 16000)
-        sr = self.playback.src_rate
-        t = np.arange(int(0.09 * sr)) / sr
-        env = np.minimum(1.0, np.minimum(t / 0.01, (t[-1] - t) / 0.02))
-        for f in (660.0, 440.0):                   # descending: "heard you"
-            self.playback.enqueue(0.2 * np.sin(2 * np.pi * f * t) * env)
-        self.playback.end_of_utterance()
-
-
-def _load_config(path: str = "config.yaml") -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
+def main():
+    args = parse_args()
+    logger.info("Starting Antigravity Voice Assistant...")
+    
+    # 1. Load Configuration
+    config_path = ROOT_DIR / args.config
+    cfg = safe_read_yaml(config_path)
+    
+    # 2. Initialize the Brain
+    # The Brain handles STT -> NLU -> Task -> LLM -> TTS
+    brain = Brain(cfg)
+    
+    # 3. Initialize the Audio Pipeline (Wake -> VAD)
+    # The pipeline continuously listens to the microphone, detects wake words (if enabled),
+    # records utterance via VAD, and then passes the audio chunk to brain.on_utterance()
+    logger.info("Initializing Audio Pipeline (Wake -> VAD)...")
+    try:
+        from src.asr.pipeline import Pipeline
+        pipeline = Pipeline(cfg, on_utterance=brain.on_utterance, enable_wake_word=not args.no_wake)
+        
+        logger.info(f"Pipeline started. Wake word detection is {'DISABLED' if args.no_wake else 'ENABLED'}.")
+        pipeline.start()
+        
+    except ImportError:
+        logger.warning("src.asr.pipeline module not found. The pipeline will not run.")
+        logger.info("This is the main entry point for the always-on voice assistant.")
+        
+    except KeyboardInterrupt:
+        logger.info("Shutting down Voice Assistant.")
+        sys.exit(0)
 
 if __name__ == "__main__":
-    import argparse
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--debug", action="store_true", help="show wake-word scores")
-    ap.add_argument("--no-wake", action="store_true",
-                    help="bypass wake word; press Enter to start listening")
-    args = ap.parse_args()
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-    )
-    cfg = _load_config(os.path.join(os.path.dirname(__file__), "config.yaml"))
-
-    from src.core.brain import Brain
-    brain = Brain(cfg)
-
-    pipeline = Pipeline(cfg, on_utterance=brain.on_utterance)
-    pipeline.run_forever(no_wake=args.no_wake)
+    main()

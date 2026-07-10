@@ -1,21 +1,48 @@
-from RealtimeSTT import AudioToTextRecorder
+import logging
+import sys
 
-if __name__ == '__main__':
-    print("Initializing Model (this takes 10 seconds)...")
+# Example placeholder for RealtimeSTT (a wrapper around faster-whisper/webrtcvad)
+try:
+    from RealtimeSTT import AudioToTextRecorder
+except ImportError:
+    AudioToTextRecorder = None
 
-    # We configure it for your 4GB GPU (cuda + int8)
-    # "large-v3-turbo" is the best balance of speed/quality for live
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
+
+def main():
+    """
+    Standalone demo script to test RealtimeSTT and microphone input without
+    booting up the entire LLM/TTS pipeline.
+    """
+    if AudioToTextRecorder is None:
+        logger.error("RealtimeSTT is not installed. Please run: pip install RealtimeSTT")
+        sys.exit(1)
+        
+    logger.info("Initializing RealtimeSTT Demo...")
+    logger.info("Please wait while the model loads into memory.")
+    
     recorder = AudioToTextRecorder(
-        model="medium",
+        model="base",
         language="en",
-        device="cuda", 
-        compute_type="int8",
-        spinner=False  # Turn off the loading spinner for cleaner text
+        spinner=True,
+        compute_type="float16" # or int8 for CPU
     )
+    
+    logger.info("\n🎙️ Model loaded! Start speaking now. Press Ctrl+C to stop.")
+    
+    try:
+        while True:
+            # recorder.text() blocks until the user stops speaking (VAD silence), 
+            # then returns the transcribed text.
+            text = recorder.text()
+            if text:
+                logger.info(f"Transcription: {text}")
+                
+    except KeyboardInterrupt:
+        logger.info("\nExiting RealtimeSTT Demo.")
+        recorder.stop()
+        sys.exit(0)
 
-    print("🔴 Ready! Speak into your microphone...")
-    print("Press Ctrl+C to stop.")
-
-    while True:
-        # This will block until you finish a sentence, then print the text
-        print(recorder.text())
+if __name__ == "__main__":
+    main()

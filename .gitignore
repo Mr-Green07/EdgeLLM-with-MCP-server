@@ -1,0 +1,9 @@
+offline_models/
+__pycache__/
+*.pyc
+.agents
+.claude
+.idea
+.junie
+.env
+

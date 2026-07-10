@@ -25,7 +25,7 @@ from frontend.gradio_app import launch  # noqa: E402
 
 def main() -> None:
     print("Starting ASR Voice Console (Gradio) …", flush=True)
-    launch(inbrowser=True)
+    launch(inbrowser=False)
 
 
 if __name__ == "__main__":
