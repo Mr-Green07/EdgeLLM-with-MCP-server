@@ -58,6 +58,8 @@
 # print(completion.choices[0].message)
 
 
+# print(completion.choices[0].message)
+
 # import random
 # from src.response_generation import PROMPT_SAMPLES, get_prompt   # (you can create a tiny loader similar to `get_prompt`)
 
@@ -72,3 +74,4 @@
 # voice = PiperVoice.load("./offline_models/en_US-hfc_female-medium.onnx")
 # with wave.open("test.wav", "wb") as wav_file:
 #     voice.synthesize_wav("Welcome to the world of speech synthesis!", wav_file)
+

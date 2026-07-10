@@ -1,4 +1,10 @@
 
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+
 # src/core/config.py
 import os
 from pathlib import Path
