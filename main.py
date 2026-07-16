@@ -2,8 +2,11 @@ import argparse
 import logging
 import sys
 
+# pyrefly: ignore [missing-import]
 from src.core.brain import Brain
+# pyrefly: ignore [missing-import]
 from src.utils.helpers import safe_read_yaml
+# pyrefly: ignore [missing-import]
 from src.core.constants import ROOT_DIR
 
 # Assuming we have a Pipeline class that handles audio routing (wake -> VAD -> STT -> TTS)
@@ -36,6 +39,7 @@ def main():
     # records utterance via VAD, and then passes the audio chunk to brain.on_utterance()
     logger.info("Initializing Audio Pipeline (Wake -> VAD)...")
     try:
+        # pyrefly: ignore [missing-import]
         from src.asr.pipeline import Pipeline
         pipeline = Pipeline(cfg, on_utterance=brain.on_utterance, enable_wake_word=not args.no_wake)
         
