@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class LLMConnector:
     """
-    The raw HTTP transport layer for connecting to local LLMs like Ollama or llama.cpp.
+    The raw HTTP transport layer for connecting to local LLMs like Ollama or llama.cpp.xsdw
     It abstracts away the network requests, timeouts, and JSON parsing.
     """
     

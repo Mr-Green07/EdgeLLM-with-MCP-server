@@ -1,9 +1,14 @@
 import logging
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from fastapi.exceptions import RequestValidationError
 
+# pyrefly: ignore [missing-import]
 from src.api.middleware import RequestLoggingMiddleware, AuthRateLimitMiddleware
+# pyrefly: ignore [missing-import]
 from src.api.exceptions import custom_http_exception_handler, validation_exception_handler
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
     # 4. Mount Routers
+    # pyrefly: ignore [missing-import]
     from src.api.routers import (
         assistant_router,
         commands_router,

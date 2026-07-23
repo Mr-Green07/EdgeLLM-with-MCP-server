@@ -1,5 +1,7 @@
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter
 import time
+# pyrefly: ignore [missing-import]
 import psutil
 
 router = APIRouter()

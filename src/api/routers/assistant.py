@@ -1,7 +1,9 @@
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, File, UploadFile
 import logging
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 from src.api.schemas import TranscribeRequest, TranscriptionResponse
 
 router = APIRouter()
