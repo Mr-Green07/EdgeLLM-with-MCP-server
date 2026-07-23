@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from src.utils.exceptions import AppError
 
 class ResponseGenerationError(AppError):

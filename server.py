@@ -30,6 +30,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,7 +39,7 @@ BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("API_PORT", "8000"))
+API_PORT = int(os.getenv("API_PORT", "8001"))
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_SIZE", "500"))
 
@@ -53,6 +54,7 @@ LANGUAGES = {
 try:
     # models.py imports `whisper` at module level; guard so the API can still
     # boot (and report a clear error) when Whisper is not installed yet.
+    # pyrefly: ignore [missing-import]
     from models import get_model_manager  # noqa: E402
     _MODELS_AVAILABLE = True
 except Exception as _exc:  # pragma: no cover
@@ -104,9 +106,13 @@ def run_transcription(tmp_path: str, language: str | None) -> dict:
 
 # ================================================================= FastAPI
 def build_fastapi_app():
+    # pyrefly: ignore [missing-import]
     from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+    # pyrefly: ignore [missing-import]
     from fastapi.middleware.cors import CORSMiddleware
+    # pyrefly: ignore [missing-import]
     from fastapi.responses import JSONResponse
+    # pyrefly: ignore [missing-import]
     from fastapi.staticfiles import StaticFiles
 
     app = FastAPI(
@@ -252,6 +258,7 @@ def run_fallback_server() -> None:
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
 
+        # pyrefly: ignore [bad-override-param-name]
         def log_message(self, fmt, *args):  # quieter default logging
             print("[api]", fmt % args)
 
@@ -283,6 +290,7 @@ def main() -> None:
         )
         return
     try:
+        # pyrefly: ignore [missing-import]
         import uvicorn
         app = build_fastapi_app()
         print(f"* FastAPI server on http://localhost:{API_PORT}  (docs at /docs)")

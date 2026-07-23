@@ -15,6 +15,7 @@ import logging
 import os
 import tempfile
 
+# pyrefly: ignore [missing-import]
 import numpy as np
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class TTSSynthesizer:
         voice_id: str | None = tts_cfg.get("voice_id")  # None = system default
 
         try:
+            # pyrefly: ignore [missing-import]
             import pyttsx3
             self._engine = pyttsx3.init()
             self._engine.setProperty("rate", rate)
@@ -73,6 +75,7 @@ class TTSSynthesizer:
     @staticmethod
     def _load_wav(path: str) -> np.ndarray:
         """Read WAV file → float32 mono array normalised to [-1, 1]."""
+        # pyrefly: ignore [missing-import]
         import scipy.io.wavfile as wavfile
 
         sr, audio = wavfile.read(path)

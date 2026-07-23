@@ -1,35 +1,24 @@
 import logging
 from typing import Dict, Any, Generator
 
+# pyrefly: ignore [missing-import]
 from src.nlu.intent import Intent
+# pyrefly: ignore [missing-import]
 from src.llm.connector import LLMConnector
+# pyrefly: ignore [missing-import]
 from src.response_generation.template_engine import TemplateEngine
+# pyrefly: ignore [missing-import]
 from src.response_generation.formatter import TTSFormatter
 
 logger = logging.getLogger(__name__)
 
 class LLMResponseGenerator:
-    """
-    The orchestrator for the Response Generation phase.
-    It takes an Intent and the result of a Task, retrieves the correct persona,
-    queries the local LLM via the connector, formats the output for speech, 
-    and returns the final string to be spoken.
-    """
-    
     def __init__(self):
         # Initialize the underlying components
         self.template_engine = TemplateEngine()
         self.connector = LLMConnector() # Defaults to gemma model locally
 
     def generate_response(self, intent: Intent, task_result: Dict[str, Any], stream: bool = False) -> str | Generator[str, None, None]:
-        """
-        Generates a verbal response based on what the user wanted and what actually happened.
-        
-        :param intent: The NLU Intent object containing what the user said.
-        :param task_result: The dictionary returned by the TaskExecutor.
-        :param stream: If True, yields sanitized words as they generate. 
-                       If False, returns the full sanitized string.
-        """
         # 1. Get the specific persona for this intent
         system_prompt = self.template_engine.get_system_prompt(intent.type.value, task_result)
         

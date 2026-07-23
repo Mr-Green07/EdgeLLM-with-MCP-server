@@ -1,37 +1,32 @@
-"""Audio pipeline: Mic → Wake → VAD → Brain → Playback.
+# Audio pipeline: Mic → Wake → VAD → Brain → Playback.
 
-This is the always-on loop that ties every component together:
+# This is the always-on loop that ties every component together:
 
-  ┌─────────┐    ┌──────────┐    ┌─────┐    ┌───────┐    ┌──────────┐
-  │MicCapture├──►│ Rebuffer  ├──►│Wake │    │  VAD  │    │  Brain   │
-  │ (16 kHz) │    │1280 / 512│    │Word │    │Endptr │    │STT→NLU→… │
-  └─────────┘    └──────────┘    └──┬──┘    └──┬────┘    └────┬─────┘
-                                    │          │              │
-                              WAKE event   ENDPOINT      TTS audio
-                                    │      (utterance)        │
-                                    ▼          ▼              ▼
-                              ┌──────────────────────────────────┐
-                              │         Event Bus / FSM          │
-                              └──────────────────────────────────┘
+#   ┌─────────┐    ┌──────────┐    ┌─────┐    ┌───────┐    ┌──────────┐
+#   │MicCapture├──►│ Rebuffer  ├──►│Wake │    │  VAD  │    │  Brain   │
+#   │ (16 kHz) │    │1280 / 512│    │Word │    │Endptr │    │STT→NLU→… │
+#   └─────────┘    └──────────┘    └──┬──┘    └──┬────┘    └────┬─────┘
+#                                     │          │              │
+#                               WAKE event   ENDPOINT      TTS audio
+#                                     │      (utterance)        │
+#                                     ▼          ▼              ▼
+#                               ┌──────────────────────────────────┐
+#                               │         Event Bus / FSM          │
+#                               └──────────────────────────────────┘
 
-The audio thread (MicCapture.chunks) pushes events; the main thread
-(Pipeline._main_loop) consumes them and calls brain.on_utterance for
-each completed utterance.
 
-States:
-  IDLE       – only wake-word engine active
-  LISTENING  – VAD collecting the utterance
-  THINKING   – brain processing (STT → NLU → LLM → TTS)
-  SPEAKING   – playback in progress
-"""
 from __future__ import annotations
 
 import logging
-import threading
+import os
+import sys
 from typing import Callable
-
+import threading
 # pyrefly: ignore [missing-import]
 import numpy as np
+
+# Ensure project root is in sys.path when script is executed directly
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # pyrefly: ignore [missing-import]
 from src.audio.capture import MicCapture, Rebuffer
@@ -45,24 +40,12 @@ from src.audio.output_handler import Playback
 from src.core.state import StateMachine, State
 # pyrefly: ignore [missing-import]
 from src.core.events import EventBus, Event
-
+# pyrefly: ignore [missing-import]
+from src.core.constants import AUDIO_SAMPLE_RATE_TTS
 log = logging.getLogger(__name__)
 
 
 class Pipeline:
-    """Always-on voice assistant pipeline.
-
-    Parameters
-    ----------
-    cfg : dict
-        Full application config (audio, wakeword, vad, tts sections).
-    on_utterance : callable
-        ``brain.on_utterance(audio_int16, pipeline)`` — called with the
-        captured utterance and a reference to this pipeline (for playback).
-    enable_wake_word : bool
-        If False, the pipeline skips wake-word detection and starts
-        listening immediately (useful for debugging / push-to-talk).
-    """
 
     def __init__(
         self,
@@ -75,28 +58,36 @@ class Pipeline:
         self._enable_wake = enable_wake_word
 
         # --- components ---
+                # --- Config & Fallbacks ---
+        tts_rate = cfg.get("tts", {}).get("sample_rate", AUDIO_SAMPLE_RATE_TTS)
+
+        # --- Components ---
         self.capture = MicCapture(cfg)
         self.wakeword = WakeWordEngine(cfg) if enable_wake_word else None
         self.vad = VadEndpointer(cfg)
-
-        tts_rate = cfg.get("tts", {}).get("sample_rate", 22050)
         self.playback = Playback(cfg, samplerate=tts_rate)
 
-        # --- rebuffers (decouple mic chunk size from engine frame sizes) ---
+        # --- Rebuffers ---
         self._wake_rb = Rebuffer(WakeWordEngine.FRAME_LEN)   # 1280 samples
         self._vad_rb = Rebuffer(VadEndpointer.FRAME_LEN)     # 512 samples
 
-        # --- state machine & event bus ---
+        # --- State Machine & Event Bus ---
         self.fsm = StateMachine()
+        self.fsm.on_change = lambda old_s, new_s: log.debug(
+            "State Shift: %s -> %s", old_s.name, new_s.name
+        )
         self._bus = EventBus()
 
-        # --- control ---
+        # --- Control ---
         self._stop = threading.Event()
         self._audio_thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------
     # Public API
-    # ------------------------------------------------------------------
+   
+ 
+
+    
     def start(self) -> None:
         """Start the pipeline (blocks the calling thread)."""
         log.info("Pipeline starting…")
@@ -259,3 +250,21 @@ class Pipeline:
                     # If wake word is disabled, immediately re-enter LISTENING
                     if not self._enable_wake:
                         self.fsm.transition(State.LISTENING)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    # pyrefly: ignore [missing-import]
+    from src.core.brain import Brain
+    # pyrefly: ignore [missing-import]
+    from src.utils.helpers import safe_read_yaml
+    # pyrefly: ignore [missing-import]
+    from src.core.constants import ROOT_DIR
+
+    config_path = ROOT_DIR / "config.yaml"
+    cfg = safe_read_yaml(config_path) if config_path.exists() else {}
+    
+    brain = Brain(cfg)
+    pipeline = Pipeline(cfg, on_utterance=brain.on_utterance, enable_wake_word=True)
+    pipeline.start()
+

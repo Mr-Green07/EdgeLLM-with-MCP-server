@@ -1,8 +1,16 @@
-import requests
+import os
+import sys
 import logging
 import json
 from typing import Dict, Any, Generator
 
+# pyrefly: ignore [missing-import]
+import requests
+
+# Ensure project root is in sys.path when script is executed directly
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+# pyrefly: ignore [missing-import]
 from src.response_generation.exceptions import LLMTimeoutError, ResponseGenerationError
 
 logger = logging.getLogger(__name__)

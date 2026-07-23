@@ -1,25 +1,3 @@
-# Exception Hierarchy:
-#     ASRException (base)
-#     ├── AudioException
-#     │   ├── InvalidAudioFormatError
-#     │   ├── AudioProcessingError
-#     │   └── AudioQueueError
-#     ├── ModelException
-#     │   ├── ModelNotFoundError
-#     │   ├── ModelLoadError
-#     │   └── UnsupportedModelError
-#     ├── TranscriptionException
-#     │   ├── TranscriptionError
-#     │   ├── TranscriptionTimeoutError
-#     │   └── LanguageDetectionError
-#     ├── ConfigurationException
-#     │   ├── InvalidConfigurationError
-#     │   └── ConfigurationFileError
-#     └── ProcessingException
-#         ├── ProcessingTimeoutError
-#         ├── ProcessingStateError
-#         └── ProcessingError
-
 class ASRException(Exception):
     # pyrefly: ignore [bad-function-definition]
     def __init__(self, message: str, error_code: str = None):

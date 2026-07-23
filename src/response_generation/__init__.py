@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import yaml
 from pathlib import Path
 

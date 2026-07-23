@@ -7,6 +7,7 @@ Example:
     from src.storage.models import Conversation, Message, User
 """
 
+# pyrefly: ignore [missing-import]
 from src.storage.model import (
     Conversation,
     Message,

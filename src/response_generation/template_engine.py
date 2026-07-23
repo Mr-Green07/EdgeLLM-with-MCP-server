@@ -2,7 +2,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
+# pyrefly: ignore [missing-import]
 from src.utils.helpers import safe_read_yaml
+# pyrefly: ignore [missing-import]
 from src.core.constants import ROOT_DIR
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class TemplateEngine:
         self.templates = safe_read_yaml(templates_path)
         logger.debug(f"TemplateEngine loaded {len(self.templates)} prompt templates.")
 
+    # pyrefly: ignore [bad-function-definition]
     def get_system_prompt(self, intent_name: str, context: Dict[str, Any] = None) -> str:
         """
         Retrieves the exact system prompt for a given intent.

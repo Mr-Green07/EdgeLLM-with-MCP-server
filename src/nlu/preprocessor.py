@@ -3,8 +3,11 @@ import string
 import logging
 from typing import Dict, Any
 
+# pyrefly: ignore [missing-import]
 from src.nlu.exceptions import PreprocessingError
+# pyrefly: ignore [missing-import]
 from src.utils.helpers import safe_read_json
+# pyrefly: ignore [missing-import]
 from src.core.constants import ROOT_DIR
 
 logger = logging.getLogger(__name__)
@@ -35,10 +38,13 @@ class TextPreprocessor:
         # Build a regex pattern for whole-word matching of filler words
         if self.filler_words:
             # Escape regex chars just in case, though they shouldn't have any
+            # pyrefly: ignore [bad-specialization]
             escaped_fillers = [re.escape(fw) for fw in self.filler_words]
+            # pyrefly: ignore [no-matching-overload]
             pattern = r'\b(?:' + '|'.join(escaped_fillers) + r')\b'
             self.filler_regex = re.compile(pattern, flags=re.IGNORECASE)
         else:
+            # pyrefly: ignore [bad-assignment]
             self.filler_regex = None
 
     def normalize(self, text: str) -> str:
@@ -75,3 +81,11 @@ class TextPreprocessor:
         except Exception as e:
             logger.error(f"Failed to preprocess text '{text}': {e}")
             raise PreprocessingError(f"Error during text normalization: {e}")
+
+    def process(self, text: str) -> str:
+        """Alias for normalize() to support callers expecting .process()."""
+        return self.normalize(text)
+
+    def preprocess(self, text: str) -> str:
+        """Alias for normalize() to support callers expecting .preprocess()."""
+        return self.normalize(text)
