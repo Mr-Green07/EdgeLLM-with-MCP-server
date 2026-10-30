@@ -101,11 +101,13 @@
     </div>
   </div>
 
-  <div class="input-wrapper">
-    <input type="text" id="user-input" placeholder="Type a command (e.g. set brightness to 50)..." onkeydown="if(event.key==='Enter') sendMessage()" />
-    <button onclick="sendMessage()">Send</button>
-  </div>
 
+  <div class="input-wrapper">
+  <input type="file" id="file-input" style="display: none;" accept=".txt,.md,.json,.log,.csv" onchange="handleFileUpload(this.files[0])" />
+  <button onclick="document.getElementById('file-input').click()" title="Upload Document" style="background: #1e293b; color: var(--cyan); border: 1px solid var(--border);">📎</button>
+  <input type="text" id="user-input" placeholder="Type a command or drop a document..." onkeydown="if(event.key==='Enter') sendMessage()" />
+  <button onclick="sendMessage()">Send</button>
+</div>
   <script>
     const chatContainer = document.getElementById('chat-container');
     const userInput = document.getElementById('user-input');
@@ -133,6 +135,26 @@
       chatContainer.appendChild(div);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+    
+
+    async function handleFileUpload(file) {
+      if (!file) return;
+      appendMessage('user', `Uploaded document: <b>${file.name}</b>`);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const res = await fetch('http://127.0.0.1:9000/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        appendMessage('assistant', data.summary || "Document indexed successfully.", data);
+      } catch (err) {
+        appendMessage('assistant', `⚠️ Failed to upload document: ${err.message}`);
+      }
+    }
 
     async function sendPreset(text) {
       userInput.value = text;
@@ -156,7 +178,7 @@
       chatContainer.scrollTop = chatContainer.scrollHeight;
 
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/query', {
+        const res = await fetch('http://127.0.0.1:9000/api/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text })

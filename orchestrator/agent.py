@@ -218,7 +218,8 @@ class SystemAgentOrchestrator:
                 else:
                     current_user_msg = user_prompt
 
-                response = self.llm.create_chat_completion(
+                response = await asyncio.to_thread(
+                    self.llm.create_chat_completion(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": current_user_msg}
@@ -228,7 +229,7 @@ class SystemAgentOrchestrator:
                         "type": "json_object",
                         "schema": grammar_schema
                     }
-                )
+                ))
 
                 raw_content = response["choices"][0]["message"]["content"]
                 print(f"\n[Step {step_idx} Model Decision]: {raw_content}")

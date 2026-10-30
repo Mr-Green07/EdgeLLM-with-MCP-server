@@ -1,11 +1,13 @@
 import asyncio
-from fastapi import FastAPI, HTTPException
+import shutil
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from orchestrator.agent import SystemAgentOrchestrator
 
 app = FastAPI(title="Multi Agent Server API", version="1.0.0")
-
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,6 +37,28 @@ async def execute_query(req: QueryRequest):
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "model": "Qwen3.5-4BQ"}
+
+@app.post("/api/upload")
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+        file_path = WORKSPACE_DIR / file.filename
+        
+        # Save file to workspace directory
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Re-index workspace chunks for the RAG engine
+        num_chunks = orchestrator.rag_agent.rag.index_workspace()
+        
+        return {
+            "status": "success",
+            "summary": f"Uploaded '{file.filename}' successfully and indexed {num_chunks} total chunks.",
+            "filename": file.filename,
+            "indexed_chunks": num_chunks
+        }
+    except Exception as e:
+        return {"status": "error", "summary": str(e)}, 500
 
 if __name__ == "__main__":
     import uvicorn

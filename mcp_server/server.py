@@ -7,6 +7,7 @@ from pydantic import Field
 from mcp_server.tools.lifecycle import execute_app_lifecycle, AllowedApps
 from mcp_server.tools.workspace import execute_workspace_fs
 from mcp_server.tools.power import execute_power_session
+
 # try:
 from config import WORKSPACE_JAIL_ROOT
 # except ModuleNotFoundError as exc:
