@@ -71,3 +71,11 @@ Run the tests:
 ```powershell
 pytest
 ```
+
+## Session Updates (2026-10-30)
+
+- Cleaned `workspace/dev tools.txt` from Git history using `git filter-repo` to remove exposed credentials (Aiven password, Google OAuth client ID/secret).
+- Rotated/revoked the exposed Aiven and Google Cloud credentials; added `workspace/dev tools.txt` to `.gitignore` to prevent recurrence.
+- Fixed `uv` environment mismatch (`VIRTUAL_ENV` from a different project) by unsetting `VIRTUAL_ENV` before running `uv sync` and `uv run uvicorn api.server:app --port 9000`.
+- Installed dependencies: `uv sync` (includes `fastapi`, `uvicorn`, `llama-cpp-python`, and RAG stack).
+- Server startup command: `uv run uvicorn api.server:app --port 9000` (or `python -m uvicorn api.server:app --port 9000` after `pip install -e .`).
