@@ -32,27 +32,30 @@ mcp = FastMCP("SystemOperatorServer")
 def system_telemetry(
     metric: Literal["cpu", "memory", "disk", "battery"]
 ) -> dict:
+    GB = 1024 ** 3
     if metric == "cpu":
         payload = {
-            "usage Percentage": psutil.cpu_percent(interval = 1)
+            "Usage": psutil.cpu_percent(interval=1),
+            "Cores": psutil.cpu_count(logical=False),
+            "Frequency ": f"{round(psutil.cpu_freq().current, 2)} Mhz"
         }
 
     elif metric == "memory":
         mem = psutil.virtual_memory()
         payload = {
-            "total_bytes": mem.total,
-            "available_bytes": mem.available,
-            "used_bytes": mem.used,
-            "usage_percent": mem.percent,
+            "Total": f"{round(mem.total / GB, 2)} GB",
+            "Available": f"{mem.available / GB:.2f} GB",
+            "Used": f"{mem.used / GB:.2f} GB",
+            "Usage": f"{mem.percent:.1f}%"
         }
 
     elif metric == "disk":
         disk = psutil.disk_usage(Path.cwd().anchor)
         payload = {
-            "total_bytes": disk.total,
-            "used_bytes": disk.used,
-            "free_bytes": disk.free,
-            "usage_percent": disk.percent,
+            "Total": f"{disk.total / GB:.2f} GB",
+            "Used": f"{disk.used / GB:.2f} GB",
+            "Free": f"{disk.free / GB:.2f} GB",
+            "Usage": f"{disk.percent:.1f}%"
         }
 
     else:

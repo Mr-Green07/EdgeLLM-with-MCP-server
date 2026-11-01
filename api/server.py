@@ -30,8 +30,13 @@ class ConfirmRequest(BaseModel):
 async def execute_query(req: QueryRequest):
     try:
         result = await orchestrator.execute_query(req.prompt)
+
+        print("Result type:", type(result))
+        print("Result:", repr(result))
         return result
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/health")
@@ -62,4 +67,4 @@ async def upload_document(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=9000)

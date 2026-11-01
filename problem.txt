@@ -1,0 +1,9 @@
+Problems found/fixed in orchestrator/agent.py:
+
+1. Unused effective_max_steps bound (FAST_SINGLE_TOOL could loop up to max_steps).
+   - Fixed step loop to use range(1, effective_max_steps + 1), and removed duplicate self.rag_agent initialization.
+
+2. Circular reference causing RecursionError / FastAPI 500.
+   - In execute_query, steps_taken stored live references to tool results and later mutated those results with data["steps"] = steps_taken (fast-exit) or last_result["steps"] = steps_taken (max steps). This made each stored step result point back to the whole steps list.
+   - When FastAPI serialized the returned dict, jsonable_encoder recursed indefinitely (RecursionError) -> HTTP 500.
+   - Fixed by deep-copying result data before storing it in steps_taken, so later "steps" annotations cannot create a circular graph.

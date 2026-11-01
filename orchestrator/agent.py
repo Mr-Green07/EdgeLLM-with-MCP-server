@@ -6,23 +6,24 @@ import sys
 from pathlib import Path
 
 # Ensure Windows can locate CUDA / llama.cpp dependent DLLs before importing llama_cpp
-if sys.platform == "win32":
-    venv_base = Path(sys.prefix) / "Lib" / "site-packages"
-    for dll_dir in [
-        venv_base / "llama_cpp" / "lib",
-        venv_base / "nvidia" / "cuda_runtime" / "bin",
-        venv_base / "nvidia" / "cublas" / "bin",
-    ]:
-        if dll_dir.exists():
-            os.add_dll_directory(str(dll_dir))
-            os.environ["PATH"] = str(dll_dir) + os.pathsep + os.environ.get("PATH", "")
+# if sys.platform == "win32":
+#     venv_base = Path(sys.prefix) / "Lib" / "site-packages"
+#     for dll_dir in [
+#         venv_base / "llama_cpp" / "lib",
+#         venv_base / "nvidia" / "cuda_runtime" / "bin",
+#         venv_base / "nvidia" / "cublas" / "bin",
+#     ]:
+#         if dll_dir.exists():
+#             os.add_dll_directory(str(dll_dir))
+#             os.environ["PATH"] = str(dll_dir) + os.pathsep + os.environ.get("PATH", "")
 
 from llama_cpp import Llama
 from fastmcp import Client
 from mcp_server.server import mcp
 from orchestrator.rag_agent import RAGReportAgent
 from orchestrator.intent_classifier import FastIntentClassifier
-
+import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "Qwen3.5-4BQ" / "model.gguf"
@@ -36,14 +37,13 @@ class SystemAgentOrchestrator:
         self.llm = Llama(
             model_path=str(MODEL_PATH),
             n_gpu_layers=-1,
-            n_ctx=1024,
+            n_ctx=4096,
             n_batch=256,
             use_mmap=True,
             verbose=False
         )
         self.rag_agent = RAGReportAgent(shared_llm=self.llm)
         self.classifier = FastIntentClassifier()
-        self.rag_agent = RAGReportAgent(shared_llm=self.llm)
 
     async def get_compact_tool_prompt(
         self, client: Client, allowed_tools: list[str] | None = None, include_finish: bool = False
@@ -207,7 +207,7 @@ class SystemAgentOrchestrator:
             steps_taken: list[dict] = []
             last_result: dict = {}
 
-            for step_idx in range(1, max_steps + 1):
+            for step_idx in range(1, effective_max_steps + 1):
                 if scratchpad:
                     history_text = "\n".join(scratchpad)
                     current_user_msg = (
@@ -218,8 +218,8 @@ class SystemAgentOrchestrator:
                 else:
                     current_user_msg = user_prompt
 
-                response = await asyncio.to_thread(
-                    self.llm.create_chat_completion(
+                # response = await asyncio.to_thread(
+                response = self.llm.create_chat_completion(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": current_user_msg}
@@ -228,14 +228,14 @@ class SystemAgentOrchestrator:
                     response_format={
                         "type": "json_object",
                         "schema": grammar_schema
-                    }
-                ))
+                    })
+                # ))
 
-                raw_content = response["choices"][0]["message"]["content"]
+                raw_content = response["choices"][0]["message"]["content"] # pyright: ignore[reportIndexIssue]
                 print(f"\n[Step {step_idx} Model Decision]: {raw_content}")
 
                 try:
-                    decision = json.loads(raw_content)
+                    decision = json.loads(raw_content) # pyright: ignore[reportArgumentType]
                     tool_name = decision.get("tool")
                     tool_args = decision.get("arguments", {})
 
@@ -278,7 +278,8 @@ class SystemAgentOrchestrator:
                             return data
 
                     last_result = data
-                    steps_taken.append({"step": step_idx, "tool": tool_name, "result": data})
+                    import copy
+                    steps_taken.append({"step": step_idx, "tool": tool_name, "result": copy.deepcopy(data)})
 
                     # Compress observation for the next step's scratchpad
                     compact_obs = json.dumps(data.get("payload", {}))[:300]
@@ -309,24 +310,40 @@ async def interactive_loop():
     print("🤖 Multi-Step System Agent Online (Type 'exit' to quit)")
     print("=======================================================")
 
+    import json
+
     while True:
         try:
             user_input = input("\nYou > ").strip()
+
             if not user_input:
                 continue
+
             if user_input.lower() in ["exit", "quit"]:
                 print("Shutting down agent...")
                 break
 
             result = await agent.execute_query(user_input)
-            print(f"\n[Final Status ({result.get('status')})]: {result.get('summary')}")
-            if "steps" in result and len(result["steps"]) > 1:
-                print(f"[Chained Steps Executed]: {len(result['steps'])}")
-            print(f"[Payload]: {json.dumps(result.get('payload', {}), indent=2)}")
+
+            print(
+                f"\n[Final Status ({result.get('status')})]: "
+                f"{result.get('summary')}"
+            )
+
+            if "steps" in result:
+                print(f"[Steps Executed]: {len(result['steps'])}")
+
+            print(
+                f"[Payload]: "
+                f"{json.dumps(result.get('payload', {}), indent=2)}"
+            )
 
         except KeyboardInterrupt:
             print("\nExiting...")
             break
+
+        except Exception as e:
+            print(f"\n[Error]: {type(e).__name__}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(interactive_loop())
